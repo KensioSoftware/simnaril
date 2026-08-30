@@ -1,0 +1,18 @@
+---
+# pnpm holds a newly published version back before it will install it, so a
+# compromised release has a day to be noticed and pulled before it can reach a
+# lockfile here. 1440 minutes is pnpm 11's own default, written out rather than
+# left implicit so that changing it is a decision someone makes on purpose.
+minimumReleaseAge: 1440
+
+# Our own packages skip the wait: we publish them, so there is no unknown
+# publisher to wait out.
+#
+# This has to stay in step with the `exclude` list under the npm ecosystem in
+# .github/dependabot.yml. Excluding a package there without excluding it here
+# does not remove the wait, it only moves it — Dependabot opens the bump pull
+# request straight away and every job on it dies at
+# `pnpm install --frozen-lockfile`, because the version it asks for is still
+# too new for pnpm to fetch.
+minimumReleaseAgeExclude:
+  - "@kensio/*"

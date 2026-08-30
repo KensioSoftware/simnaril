@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    // ESNext rather than a numbered library, for `Symbol.dispose` and
+    // `Symbol.asyncDispose`. A simulated environment owns real resources while
+    // it is alive, and `using sim = ...` is how AGENTS.md wants them given
+    // back. TypeScript declares those two symbols in `esnext.disposable` and
+    // nowhere else, so a numbered lib makes every `using` a type error.
+    //
+    // Note this is a claim about the runtime, and the runtime floor that backs
+    // it is `engines: node >= 24`, which is the oldest line that can parse
+    // `using` at all.
+    "lib": ["ESNext"],
+    "types": ["node"],
+
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "removeComments": false
+  },
+  "include": ["src/**/*", "test/**/*"]
+}
