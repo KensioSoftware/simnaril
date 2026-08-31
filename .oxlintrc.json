@@ -204,6 +204,20 @@
       // ── Tests ───────────────────────────────────────────
       "files": ["**/*.test.ts"],
       "rules": {
+        // Smartass supplies all runtime assertions. Vitest remains the test
+        // runner.
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "vitest",
+                "importNames": ["expect"],
+                "message": "Use @kensio/smartass assertion functions."
+              }
+            ]
+          }
+        ],
         "vitest/consistent-test-it": ["error", { "fn": "it" }],
         "vitest/no-focused-tests": "error",
         "vitest/no-disabled-tests": "warn",

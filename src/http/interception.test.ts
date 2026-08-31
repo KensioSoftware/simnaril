@@ -1,8 +1,9 @@
 import { faker } from "@faker-js/faker";
+import { assertIdentical } from "@kensio/smartass";
 import { once } from "node:events";
 import { get as httpGet, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import { interceptHttpRequests } from "./interception.js";
 
@@ -54,21 +55,21 @@ describe("HTTP interception", () => {
 
     // Then both clients receive the in-process response, while unmatched calls
     // still reach their original destination.
-    expect(fetchBody).toBe(simulatedBody);
-    expect(clientRequestBody).toBe(simulatedBody);
-    await expect(
-      fetch(passedThroughUrl).then((response) => response.text()),
-    ).resolves.toBe(originBody);
+    assertIdentical(fetchBody, simulatedBody);
+    assertIdentical(clientRequestBody, simulatedBody);
+    assertIdentical(
+      await fetch(passedThroughUrl).then((response) => response.text()),
+      originBody,
+    );
 
     // When interception is disposed.
     interception.dispose();
 
     // Then both clients regain their normal process behaviour.
-    await expect(
-      fetch(interceptedUrl).then((response) => response.text()),
-    ).resolves.toBe(originBody);
-    await expect(readWithClientRequest(interceptedUrl)).resolves.toBe(
+    assertIdentical(
+      await fetch(interceptedUrl).then((response) => response.text()),
       originBody,
     );
+    assertIdentical(await readWithClientRequest(interceptedUrl), originBody);
   });
 });
