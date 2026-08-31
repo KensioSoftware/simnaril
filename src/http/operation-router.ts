@@ -69,7 +69,7 @@ export class OperationRouter {
     return runMiddleware(
       context,
       middleware,
-      () => runHttpOperation(operation, request, match),
+      () => runHttpOperation(operation, match, context),
       (action) => this.#translateErrors(action),
     );
   }

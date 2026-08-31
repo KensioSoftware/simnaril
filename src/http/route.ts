@@ -8,7 +8,10 @@ export interface CompiledRoute {
 }
 
 /** Compiles an absolute path template with named parameters. */
-export function compileRoute(path: string): CompiledRoute {
+export function compileRoute(
+  path: string,
+  requiredParameters: readonly string[] = [],
+): CompiledRoute {
   validateOperationPath(path);
   const segments = path === "/" ? [] : path.slice(1).split("/");
   const parameterNames = new Set<string>();
@@ -31,6 +34,14 @@ export function compileRoute(path: string): CompiledRoute {
     }
 
     parameterNames.add(name);
+  }
+
+  for (const name of requiredParameters) {
+    if (!parameterNames.has(name)) {
+      throw new TypeError(
+        `Operation path "${path}" must include path parameter ":${name}".`,
+      );
+    }
   }
 
   const literalSegments = segments.filter(

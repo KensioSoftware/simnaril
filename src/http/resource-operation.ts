@@ -3,11 +3,10 @@ import type { ResourceOperationProps } from "../rest-resource-operation.js";
 import {
   type HttpMiddleware,
   type HttpOperation,
-  operationMiddleware,
-  runSemanticOperation,
   SemanticOperation,
 } from "./operation.js";
-import { compileRoute, normalizeMethod } from "./route.js";
+import { compileRoute } from "./route.js";
+import { semanticHttpOperation } from "./semantic-http-operation.js";
 
 const decodeResourceOperation = async (request: Request): Promise<unknown> =>
   request.body === null ? undefined : request.json();
@@ -31,20 +30,14 @@ export function resourceOperation<T extends object, TInput, TOutput>(
 
   return {
     semantic,
-    http: {
-      ...route,
+    http: semanticHttpOperation({
       decode: decodeResourceOperation,
       encode: encodeResourceOperation,
-      method: normalizeMethod(props.method),
-      middleware: operationMiddleware(semantic),
-      operate: (input, context) =>
-        runSemanticOperation(semantic, {
-          ...context,
-          input: input as TInput,
-          resource,
-        }),
+      method: props.method,
+      resource,
       resourceMiddleware: middleware,
-      transform: (decoded) => decoded,
-    },
+      route,
+      semantic,
+    }),
   };
 }

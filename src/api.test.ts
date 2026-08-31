@@ -492,6 +492,27 @@ describe("a simulated API", () => {
     );
   });
 
+  it("shares one request context between middleware and its operation", async () => {
+    // Given middleware which enriches the parsed request query.
+    const api = new SimApi();
+    const queryName = faker.word.noun();
+    const queryValue = faker.word.adjective();
+    api.use((context, next) => {
+      context.query.set(queryName, queryValue);
+      return next();
+    });
+    api.operation("GET", "/status", ({ query }) =>
+      Response.json({ enriched: query.get(queryName) }),
+    );
+
+    // When the request reaches the operation through that middleware.
+    const response = await api.handle(request("GET", "/status"));
+
+    // Then the operation sees the context value added by middleware.
+    assertResponseStatus(response, 200);
+    assertObjectEquals(await response.json(), { enriched: queryValue });
+  });
+
   it("decodes resource operation input and permits an empty semantic result", async () => {
     // Given a resource operation which accepts JSON and changes state in place.
     const api = new SimApi();
@@ -561,6 +582,18 @@ describe("a simulated API", () => {
     const invalidMethod = assertThrowsError(() => {
       api.operation("GET REPORT", "/reports", () => new Response());
     });
+    const missingRequiredParameters = (
+      ["get", "update", "delete"] as const
+    ).map((operationName) =>
+      assertThrowsError(() => {
+        new SimApi().resource<Widget>({
+          path: "/widgets",
+          operations: {
+            [operationName]: { path: `/${operationName}` },
+          },
+        });
+      }),
+    );
 
     // Then each definition fails before it can register an ambiguous route.
     for (const error of [
@@ -570,6 +603,7 @@ describe("a simulated API", () => {
       duplicateParameter,
       invalidPath,
       invalidMethod,
+      ...missingRequiredParameters,
     ]) {
       assertInstanceOf(error, TypeError);
     }
@@ -582,6 +616,9 @@ describe("a simulated API", () => {
     assertStringIncludes(duplicateParameter.message, "appears more than once");
     assertStringIncludes(invalidPath.message, "absolute operation path");
     assertStringIncludes(invalidMethod.message, "Expected an HTTP method");
+    for (const error of missingRequiredParameters) {
+      assertStringIncludes(error.message, 'must include path parameter ":id"');
+    }
   });
 
   it("matches a raw operation at the API root", async () => {

@@ -8,15 +8,10 @@ import type { RouteMatch } from "./route.js";
 /** Runs the protocol and semantic steps for a matched HTTP operation. */
 export async function runHttpOperation(
   operation: HttpOperation,
-  request: Request,
   match: RouteMatch,
+  context: HttpOperationContext,
 ): Promise<Response> {
-  const context: HttpOperationContext = {
-    params: match.params,
-    query: new URL(request.url).searchParams,
-    request,
-  };
-  const decoded = await operation.decode(request);
+  const decoded = await operation.decode(context.request);
   const input = await operation.transform(decoded, match);
   const output = await operation.operate(input, context);
   return operation.encode(output);

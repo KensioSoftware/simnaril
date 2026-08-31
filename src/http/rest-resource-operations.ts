@@ -6,18 +6,15 @@ import type {
 import {
   type HttpMiddleware,
   type HttpOperation,
-  operationMiddleware,
-  runSemanticOperation,
   SemanticOperation,
   type SemanticOperationContext,
 } from "./operation.js";
-import { compileRoute, normalizeMethod } from "./route.js";
+import { compileRoute } from "./route.js";
+import { semanticHttpOperation } from "./semantic-http-operation.js";
 
 const decodeEmpty = (): Promise<unknown> => Promise.resolve();
 
 const decodeJson = async (request: Request): Promise<unknown> => request.json();
-
-const passThrough = (decoded: unknown): unknown => decoded;
 
 const encodeJson =
   (status: number) =>
@@ -50,6 +47,7 @@ interface SuppliedOperationProps<TInput, TOutput, T extends object> {
   ) => Promise<TOutput> | TOutput;
   resource: RestResource<T>;
   resourceMiddleware: readonly HttpMiddleware[];
+  requiredParameters?: readonly string[];
 }
 
 const suppliedOperation = <TInput, TOutput, T extends object>(
@@ -61,27 +59,20 @@ const suppliedOperation = <TInput, TOutput, T extends object>(
   const semantic = new SemanticOperation(props.handle);
   const route = compileRoute(
     `${props.resource.path}${props.configuration?.path ?? props.defaultPath}`,
+    props.requiredParameters,
   );
 
   return {
     semantic,
-    http: {
-      ...route,
+    http: semanticHttpOperation({
       decode: props.decode,
       encode: props.encode,
-      method: normalizeMethod(
-        props.configuration?.method ?? props.defaultMethod,
-      ),
-      middleware: operationMiddleware(semantic),
-      operate: (input, context) =>
-        runSemanticOperation(semantic, {
-          ...context,
-          input: input as TInput,
-          resource: props.resource,
-        }),
+      method: props.configuration?.method ?? props.defaultMethod,
+      resource: props.resource,
       resourceMiddleware: props.resourceMiddleware,
-      transform: passThrough,
-    },
+      route,
+      semantic,
+    }),
   };
 };
 
@@ -124,6 +115,7 @@ export function restResourceOperations<T extends object>(
     handle: ({ params, resource: operationResource }) =>
       operationResource.get(requiredPathParameter(params, "id")),
     encode: encodeJson(200),
+    requiredParameters: ["id"],
   });
   const update = suppliedOperation<Partial<T>, T, T>({
     resource,
@@ -135,6 +127,7 @@ export function restResourceOperations<T extends object>(
     handle: ({ input, params, resource: operationResource }) =>
       operationResource.update(requiredPathParameter(params, "id"), input),
     encode: encodeJson(200),
+    requiredParameters: ["id"],
   });
   const deleteOperation = suppliedOperation<unknown, T, T>({
     resource,
@@ -146,6 +139,7 @@ export function restResourceOperations<T extends object>(
     handle: ({ params, resource: operationResource }) =>
       operationResource.delete(requiredPathParameter(params, "id")),
     encode: encodeEmpty,
+    requiredParameters: ["id"],
   });
 
   return {
