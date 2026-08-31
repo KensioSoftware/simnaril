@@ -1,28 +1,42 @@
-import { DuplicateEntityError } from "./duplicate-entity-error.js";
-import { EntityNotFoundError } from "./entity-not-found-error.js";
 import {
-  type HttpOperation,
-  type RouteMatch,
-  runHttpOperation,
+  createRawHttpOperation,
+  type HttpMiddleware,
+  type HttpOperationContext,
+  operationMiddleware,
+  type RawHttpOperation,
 } from "./http/operation.js";
-import { restResourceOperations } from "./http/rest-resource-operations.js";
-import { RestResource, type RestResourceProps } from "./rest-resource.js";
+import { OperationRouter } from "./http/operation-router.js";
+import { compileRoute, normalizeMethod } from "./http/route.js";
+import { attachRestResource, RestResource } from "./rest-resource.js";
+import type { RestResourceProps } from "./rest-resource-operation.js";
 import { SimResource, type SimResourceProps } from "./resource.js";
-import { UnimplementedRouteError } from "./unimplemented-route-error.js";
 
-/** Configures conventional resource state and its HTTP collection path. */
+/** Configures conventional resource state and its HTTP operations. */
 export interface SimApiResourceProps<T extends object>
   extends SimResourceProps<T>, RestResourceProps {}
 
+/** Handles a raw HTTP operation after Simnaril has matched its route. */
+export type RawHttpOperationHandler = (
+  context: HttpOperationContext,
+) => Promise<Response> | Response;
+
 /** Routes HTTP requests to stateful simulated resources. */
 export class SimApi {
-  readonly #operations: HttpOperation[] = [];
   readonly #paths = new Set<string>();
+  readonly #router = new OperationRouter();
+
+  /** Adds middleware around every matched operation in this API. */
+  use(middleware: HttpMiddleware): this {
+    this.#router.use(middleware);
+    return this;
+  }
 
   /** Creates resource state and exposes its conventional HTTP operations. */
   resource<T extends object>(props: SimApiResourceProps<T>): RestResource<T> {
-    const { path, ...stateProps } = props;
-    return this.expose(new SimResource<T>(stateProps), { path });
+    const { operations, path, ...stateProps } = props;
+    const restProps: RestResourceProps =
+      operations === undefined ? { path } : { operations, path };
+    return this.expose(new SimResource<T>(stateProps), restProps);
   }
 
   /** Exposes existing resource state through conventional HTTP operations. */
@@ -30,7 +44,7 @@ export class SimApi {
     state: SimResource<T>,
     props: RestResourceProps,
   ): RestResource<T> {
-    this.#validatePath(props.path);
+    this.#validateResourcePath(props.path);
 
     if (this.#paths.has(props.path)) {
       throw new TypeError(
@@ -39,61 +53,41 @@ export class SimApi {
     }
 
     const resource = new RestResource(state, props);
+    attachRestResource(resource, (operation) => {
+      this.#router.register(operation);
+    });
     this.#paths.add(props.path);
-    this.#operations.push(...restResourceOperations(resource));
     return resource;
   }
 
+  /** Adds a raw HTTP operation to this API. */
+  operation(
+    method: string,
+    path: string,
+    handle: RawHttpOperationHandler,
+  ): RawHttpOperation {
+    const route = compileRoute(path);
+    const operation = createRawHttpOperation();
+
+    this.#router.register({
+      ...route,
+      decode: () => Promise.resolve(),
+      encode: (output) => output as Response,
+      method: normalizeMethod(method),
+      middleware: operationMiddleware(operation),
+      operate: (_input, context) => handle(context),
+      resourceMiddleware: [],
+      transform: (decoded) => decoded,
+    });
+    return operation;
+  }
+
   /** Handles one request through the matching simulated HTTP operation. */
-  async handle(request: Request): Promise<Response> {
-    const pathname = new URL(request.url).pathname;
-    const method = request.method.toUpperCase();
-    let selected: { match: RouteMatch; operation: HttpOperation } | undefined;
-
-    for (const operation of this.#operations) {
-      if (operation.method !== method) {
-        continue;
-      }
-
-      const match = operation.match(pathname);
-
-      if (
-        match !== undefined &&
-        (selected === undefined ||
-          operation.specificity > selected.operation.specificity)
-      ) {
-        selected = { match, operation };
-      }
-    }
-
-    if (selected !== undefined) {
-      return this.#run(selected.operation, request, selected.match);
-    }
-
-    throw new UnimplementedRouteError(request);
+  handle(request: Request): Promise<Response> {
+    return this.#router.handle(request);
   }
 
-  async #run(
-    operation: HttpOperation,
-    request: Request,
-    match: RouteMatch,
-  ): Promise<Response> {
-    try {
-      return await runHttpOperation(operation, request, match);
-    } catch (error) {
-      if (error instanceof EntityNotFoundError) {
-        return Response.json({ error: error.message }, { status: 404 });
-      }
-
-      if (error instanceof DuplicateEntityError) {
-        return Response.json({ error: error.message }, { status: 409 });
-      }
-
-      throw error;
-    }
-  }
-
-  #validatePath(path: string): void {
+  #validateResourcePath(path: string): void {
     const base = new URL("https://simnaril.invalid");
     const url = new URL(path, base);
 
@@ -102,7 +96,7 @@ export class SimApi {
       url.pathname !== path ||
       url.search !== "" ||
       url.hash !== "" ||
-      !/^\/[^/]+(?:\/[^/]+)*$/u.test(path)
+      !/^\/[^/:]+(?:\/[^/:]+)*$/u.test(path)
     ) {
       throw new TypeError(
         `Expected a resource collection path such as "/widgets", received "${path}".`,

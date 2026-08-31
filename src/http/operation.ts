@@ -1,56 +1,115 @@
-export interface RouteMatch {
-  identity?: string;
+import type { CompiledRoute, RouteMatch } from "./route.js";
+
+/** HTTP data shared by handlers and middleware for one matched operation. */
+export interface HttpOperationContext {
+  params: Readonly<Record<string, string>>;
+  query: URLSearchParams;
+  request: Request;
 }
 
-export interface HttpOperation {
+/** Runs around an HTTP operation and its encoded response. */
+export type HttpMiddleware = (
+  context: HttpOperationContext,
+  next: () => Promise<Response>,
+) => Promise<Response> | Response;
+
+/** HTTP and semantic data supplied to a semantic operation handler. */
+export interface SemanticOperationContext<
+  TInput,
+  TResource,
+> extends HttpOperationContext {
+  input: TInput;
+  resource: TResource;
+}
+
+/** Replaces the semantic behaviour of a supplied operation. */
+export interface SemanticOperationOverride<TInput, TOutput, TResource> {
+  handle: (
+    context: SemanticOperationContext<TInput, TResource>,
+  ) => Promise<TOutput> | TOutput;
+}
+
+export interface HttpOperation extends CompiledRoute {
   decode: (request: Request) => Promise<unknown>;
   encode: (output: unknown) => Promise<Response> | Response;
-  match: (pathname: string) => RouteMatch | undefined;
   method: string;
-  operate: (input: unknown, match: RouteMatch) => unknown;
-  specificity: number;
+  middleware: readonly HttpMiddleware[];
+  operate: (input: unknown, context: HttpOperationContext) => unknown;
+  resourceMiddleware: readonly HttpMiddleware[];
   transform: (decoded: unknown, match: RouteMatch) => unknown;
 }
 
-export const matchCollection =
-  (path: string) =>
-  (pathname: string): RouteMatch | undefined =>
-    pathname === path ? {} : undefined;
+const middlewareAccess = Symbol("operation middleware");
+const semanticRun = Symbol("semantic operation handler");
 
-export const matchItem =
-  (path: string) =>
-  (pathname: string): RouteMatch | undefined => {
-    const prefix = `${path}/`;
+/** Adds operation middleware and replaces semantic behaviour when supported. */
+export class SemanticOperation<TInput, TOutput, TResource> {
+  readonly #middleware: HttpMiddleware[] = [];
+  #handle: (
+    context: SemanticOperationContext<TInput, TResource>,
+  ) => Promise<TOutput> | TOutput;
 
-    if (!pathname.startsWith(prefix)) {
-      return undefined;
-    }
+  constructor(
+    handle: (
+      context: SemanticOperationContext<TInput, TResource>,
+    ) => Promise<TOutput> | TOutput,
+  ) {
+    this.#handle = handle;
+  }
 
-    const encodedIdentity = pathname.slice(prefix.length);
+  /** Replaces this operation's semantic behaviour. */
+  override(
+    replacement: SemanticOperationOverride<TInput, TOutput, TResource>,
+  ): this {
+    this.#handle = replacement.handle;
+    return this;
+  }
 
-    if (encodedIdentity.length === 0 || encodedIdentity.includes("/")) {
-      return undefined;
-    }
+  /** Adds middleware around this operation. */
+  use(middleware: HttpMiddleware): this {
+    this.#middleware.push(middleware);
+    return this;
+  }
 
-    try {
-      return { identity: decodeURIComponent(encodedIdentity) };
-    } catch (error) {
-      if (error instanceof URIError) {
-        return undefined;
-      }
+  [semanticRun](
+    context: SemanticOperationContext<TInput, TResource>,
+  ): Promise<TOutput> | TOutput {
+    return this.#handle(context);
+  }
 
-      throw error;
-    }
+  [middlewareAccess](): readonly HttpMiddleware[] {
+    return this.#middleware;
+  }
+}
+
+/** Adds middleware around a raw HTTP operation. */
+export interface RawHttpOperation {
+  /** Adds middleware around this operation. */
+  use: (middleware: HttpMiddleware) => this;
+  [middlewareAccess]: () => readonly HttpMiddleware[];
+}
+
+export function createRawHttpOperation(): RawHttpOperation {
+  const middleware: HttpMiddleware[] = [];
+
+  return {
+    use(added): RawHttpOperation {
+      middleware.push(added);
+      return this;
+    },
+    [middlewareAccess]: () => middleware,
   };
+}
 
-/** Runs the protocol and semantic steps for a matched HTTP operation. */
-export async function runHttpOperation(
-  operation: HttpOperation,
-  request: Request,
-  match: RouteMatch,
-): Promise<Response> {
-  const decoded = await operation.decode(request);
-  const input = await operation.transform(decoded, match);
-  const output = await operation.operate(input, match);
-  return operation.encode(output);
+export function operationMiddleware<TInput, TOutput, TResource>(
+  operation: RawHttpOperation | SemanticOperation<TInput, TOutput, TResource>,
+): readonly HttpMiddleware[] {
+  return operation[middlewareAccess]();
+}
+
+export function runSemanticOperation<TInput, TOutput, TResource>(
+  operation: SemanticOperation<TInput, TOutput, TResource>,
+  context: SemanticOperationContext<TInput, TResource>,
+): Promise<TOutput> | TOutput {
+  return operation[semanticRun](context);
 }

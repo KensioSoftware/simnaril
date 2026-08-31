@@ -1,4 +1,8 @@
-export { SimApi, type SimApiResourceProps } from "./api.js";
+export {
+  SimApi,
+  type RawHttpOperationHandler,
+  type SimApiResourceProps,
+} from "./api.js";
 export {
   SimEnvironment,
   type SimEnvironmentProps,
@@ -7,7 +11,22 @@ export {
 } from "./environment.js";
 export { DuplicateEntityError } from "./duplicate-entity-error.js";
 export { EntityNotFoundError } from "./entity-not-found-error.js";
-export { RestResource, type RestResourceProps } from "./rest-resource.js";
+export {
+  type HttpMiddleware,
+  type HttpOperationContext,
+  type RawHttpOperation,
+  SemanticOperation,
+  type SemanticOperationContext,
+  type SemanticOperationOverride,
+} from "./http/operation.js";
+export { RestResource } from "./rest-resource.js";
+export {
+  type ResourceOperationProps,
+  type RestResourceOperationConfiguration,
+  type RestResourceOperationName,
+  type RestResourceOperations,
+  type RestResourceProps,
+} from "./rest-resource-operation.js";
 export { SimResource, type SimResourceProps } from "./resource.js";
 export { UnclaimedOriginError } from "./unclaimed-origin-error.js";
 export { UnimplementedRouteError } from "./unimplemented-route-error.js";

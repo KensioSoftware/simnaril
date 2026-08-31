@@ -84,6 +84,124 @@ method for intercepted requests. Request decoding, the semantic resource
 operation and response encoding run as separate pipeline steps. JSON is the
 default request and response codec.
 
+## Customize resource operations
+
+The customization API has four levels. Start with route configuration, then
+move to a semantic override, a resource operation or a raw HTTP operation as
+the service behaviour requires.
+
+### Configure a supplied route
+
+The `operations` property changes the method or resource-relative path of a
+supplied operation. Its decoder, semantic behaviour, error translation and
+encoder stay in place.
+
+```ts
+const widgets = api.resource<Widget>({
+  path: "/widgets",
+  operations: {
+    update: {
+      method: "POST",
+      path: "/:id/changes",
+    },
+  },
+});
+```
+
+The supplied operation names are `list`, `create`, `get`, `update` and
+`delete`.
+
+### Override supplied semantic behaviour
+
+`override()` replaces the semantic handler for one supplied operation. The
+handler receives decoded `input`, its `resource`, the original `request`,
+parsed path `params` and parsed `query` parameters. It returns a semantic
+result. Simnaril encodes that result with the supplied operation's status and
+response codec.
+
+```ts
+widgets.operations.create.override({
+  handle({ input, resource, request }) {
+    return resource.create({
+      ...input,
+      id: request.headers.get("x-widget-id") ?? crypto.randomUUID(),
+    });
+  },
+});
+```
+
+State errors still use the API's error translation. Other supplied operations
+keep their default behaviour.
+
+### Add a resource operation
+
+`resource.operation()` adds a named domain action below the resource path.
+The handler uses the same semantic context and response pipeline as a supplied
+operation. A request body is decoded as JSON when present. A result is encoded
+as JSON with status `200`, and an empty result becomes status `204`.
+
+```ts
+widgets.operation("archive", {
+  method: "POST",
+  path: "/:id/archive",
+  handle({ params, resource }) {
+    const id = params["id"];
+
+    if (id === undefined) {
+      throw new TypeError("The archive route requires an id.");
+    }
+
+    return resource.update(id, { status: "archived" });
+  },
+});
+```
+
+### Add a raw HTTP operation
+
+`api.operation()` handles an endpoint that needs direct control of its
+`Response`. Its path is absolute. Simnaril matches the route and passes a
+context object containing `request`, `params` and `query`.
+
+```ts
+api.operation("GET", "/reports/:reportId", ({ params, query }) => {
+  return Response.json({
+    reportId: params["reportId"],
+    view: query.get("view"),
+  });
+});
+```
+
+Supplied, overridden, resource and raw operations are all reached through
+`SimApi.handle(Request)`.
+
+## Apply middleware
+
+Register middleware with `use()` at API, resource or operation scope.
+Middleware takes the parsed HTTP context and a `next` function. It can inspect
+or replace the response returned by `next()`.
+
+```ts
+api.use(addRequestId);
+widgets.use(applyRateLimit);
+widgets.operations.create.use(recordCreationLatency);
+```
+
+`api.operation()` and `resource.operation()` return their operation object, so
+custom operations can use the same operation-level method.
+
+Requests always enter middleware in this order:
+
+```text
+API middleware
+  -> resource middleware
+    -> operation middleware
+      -> operation
+```
+
+Responses unwind through operation, resource and API middleware. Raw HTTP
+operations have API and operation middleware because they do not belong to a
+resource.
+
 ## Share state between API representations
 
 One `SimResource` can back more than one API or version. Each `RestResource`
