@@ -1,16 +1,20 @@
 import type { RestResource } from "../rest-resource.js";
+import type {
+  RestResourceOperationConfiguration,
+  RestResourceOperations,
+} from "../rest-resource-operation.js";
 import {
+  type HttpMiddleware,
   type HttpOperation,
-  matchCollection,
-  matchItem,
-  type RouteMatch,
+  SemanticOperation,
+  type SemanticOperationContext,
 } from "./operation.js";
+import { compileRoute } from "./route.js";
+import { semanticHttpOperation } from "./semantic-http-operation.js";
 
-const decodeEmpty = (): Promise<void> => Promise.resolve();
+const decodeEmpty = (): Promise<unknown> => Promise.resolve();
 
 const decodeJson = async (request: Request): Promise<unknown> => request.json();
-
-const passThrough = (decoded: unknown): unknown => decoded;
 
 const encodeJson =
   (status: number) =>
@@ -19,63 +23,133 @@ const encodeJson =
 
 const encodeEmpty = (): Response => new Response(undefined, { status: 204 });
 
-const itemIdentity = (match: RouteMatch): string =>
-  (match as { identity: string }).identity;
+const requiredPathParameter = (
+  params: Readonly<Record<string, string>>,
+  name: string,
+): string => {
+  const value = params[name];
+
+  if (value === undefined) {
+    throw new TypeError(`Matched operation has no ":${name}" path parameter.`);
+  }
+
+  return value;
+};
+
+interface SuppliedOperationProps<TInput, TOutput, T extends object> {
+  configuration: RestResourceOperationConfiguration | undefined;
+  decode: (request: Request) => Promise<unknown>;
+  defaultMethod: string;
+  defaultPath: string;
+  encode: (output: unknown) => Promise<Response> | Response;
+  handle: (
+    context: SemanticOperationContext<TInput, RestResource<T>>,
+  ) => Promise<TOutput> | TOutput;
+  resource: RestResource<T>;
+  resourceMiddleware: readonly HttpMiddleware[];
+  requiredParameters?: readonly string[];
+}
+
+const suppliedOperation = <TInput, TOutput, T extends object>(
+  props: SuppliedOperationProps<TInput, TOutput, T>,
+): {
+  http: HttpOperation;
+  semantic: SemanticOperation<TInput, TOutput, RestResource<T>>;
+} => {
+  const semantic = new SemanticOperation(props.handle);
+  const route = compileRoute(
+    `${props.resource.path}${props.configuration?.path ?? props.defaultPath}`,
+    props.requiredParameters,
+  );
+
+  return {
+    semantic,
+    http: semanticHttpOperation({
+      decode: props.decode,
+      encode: props.encode,
+      method: props.configuration?.method ?? props.defaultMethod,
+      resource: props.resource,
+      resourceMiddleware: props.resourceMiddleware,
+      route,
+      semantic,
+    }),
+  };
+};
 
 /** Builds conventional collection and item operations for one resource. */
 export function restResourceOperations<T extends object>(
   resource: RestResource<T>,
-): HttpOperation[] {
-  const collection = matchCollection(resource.path);
-  const item = matchItem(resource.path);
-  const specificity = resource.path.length;
+  configuration: Partial<
+    Record<keyof RestResourceOperations<T>, RestResourceOperationConfiguration>
+  > = {},
+  resourceMiddleware: readonly HttpMiddleware[] = [],
+): { http: HttpOperation[]; semantic: RestResourceOperations<T> } {
+  const list = suppliedOperation<unknown, T[], T>({
+    resource,
+    resourceMiddleware,
+    configuration: configuration.list,
+    defaultMethod: "GET",
+    defaultPath: "",
+    decode: decodeEmpty,
+    handle: ({ resource: operationResource }) => operationResource.list(),
+    encode: encodeJson(200),
+  });
+  const create = suppliedOperation<Partial<T>, T, T>({
+    resource,
+    resourceMiddleware,
+    configuration: configuration.create,
+    defaultMethod: "POST",
+    defaultPath: "",
+    decode: decodeJson,
+    handle: ({ input, resource: operationResource }) =>
+      operationResource.create(input),
+    encode: encodeJson(201),
+  });
+  const get = suppliedOperation<unknown, T, T>({
+    resource,
+    resourceMiddleware,
+    configuration: configuration.get,
+    defaultMethod: "GET",
+    defaultPath: "/:id",
+    decode: decodeEmpty,
+    handle: ({ params, resource: operationResource }) =>
+      operationResource.get(requiredPathParameter(params, "id")),
+    encode: encodeJson(200),
+    requiredParameters: ["id"],
+  });
+  const update = suppliedOperation<Partial<T>, T, T>({
+    resource,
+    resourceMiddleware,
+    configuration: configuration.update,
+    defaultMethod: "PATCH",
+    defaultPath: "/:id",
+    decode: decodeJson,
+    handle: ({ input, params, resource: operationResource }) =>
+      operationResource.update(requiredPathParameter(params, "id"), input),
+    encode: encodeJson(200),
+    requiredParameters: ["id"],
+  });
+  const deleteOperation = suppliedOperation<unknown, T, T>({
+    resource,
+    resourceMiddleware,
+    configuration: configuration.delete,
+    defaultMethod: "DELETE",
+    defaultPath: "/:id",
+    decode: decodeEmpty,
+    handle: ({ params, resource: operationResource }) =>
+      operationResource.delete(requiredPathParameter(params, "id")),
+    encode: encodeEmpty,
+    requiredParameters: ["id"],
+  });
 
-  return [
-    {
-      method: "GET",
-      match: collection,
-      specificity,
-      decode: decodeEmpty,
-      transform: passThrough,
-      operate: () => resource.list(),
-      encode: encodeJson(200),
+  return {
+    http: [list.http, create.http, get.http, update.http, deleteOperation.http],
+    semantic: {
+      list: list.semantic,
+      create: create.semantic,
+      get: get.semantic,
+      update: update.semantic,
+      delete: deleteOperation.semantic,
     },
-    {
-      method: "POST",
-      match: collection,
-      specificity,
-      decode: decodeJson,
-      transform: passThrough,
-      operate: (input) => resource.create(input as Partial<T>),
-      encode: encodeJson(201),
-    },
-    {
-      method: "GET",
-      match: item,
-      specificity,
-      decode: decodeEmpty,
-      transform: passThrough,
-      operate: (_input, match) => resource.get(itemIdentity(match)),
-      encode: encodeJson(200),
-    },
-    {
-      method: "PATCH",
-      match: item,
-      specificity,
-      decode: decodeJson,
-      transform: passThrough,
-      operate: (input, match) =>
-        resource.update(itemIdentity(match), input as Partial<T>),
-      encode: encodeJson(200),
-    },
-    {
-      method: "DELETE",
-      match: item,
-      specificity,
-      decode: decodeEmpty,
-      transform: passThrough,
-      operate: (_input, match) => resource.delete(itemIdentity(match)),
-      encode: encodeEmpty,
-    },
-  ];
+  };
 }
