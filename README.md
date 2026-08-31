@@ -4,37 +4,24 @@ In-process third-party API simulator
 
 ## Run an application against a simulated service
 
-A simulation is an object with domain state and an HTTP handler. Register it
-under the service's production origin, then call the application without
-changing its base URL.
+A `SimApi` holds resource state and handles HTTP requests for one simulated
+service. Register it under the service's production origin, then call the
+application without changing its base URL.
 
 ```ts
-import { SimEnvironment, SimResource, type SimService } from "@kensio/simnaril";
+import { SimApi, SimEnvironment } from "@kensio/simnaril";
 
 interface Widget {
   id: string;
   name: string;
 }
 
-class SimWidgets implements SimService {
-  readonly widgets = new SimResource<Widget>({ name: "widget" });
-
-  handle(request: Request): Response {
-    const url = new URL(request.url);
-
-    if (request.method === "GET" && url.pathname === "/v1/widgets") {
-      return Response.json(this.widgets.list());
-    }
-
-    return new Response("Not found", { status: 404 });
-  }
-}
-
-const service = new SimWidgets();
-service.widgets.seed({ id: "widget-1", name: "First widget" });
+const api = new SimApi();
+const widgets = api.resource<Widget>({ path: "/v1/widgets" });
+widgets.seed({ id: "widget-1", name: "First widget" });
 
 using sim = new SimEnvironment();
-sim.register("https://api.example.com", service);
+sim.register("https://api.example.com", api);
 
 const response = await fetch("https://api.example.com/v1/widgets");
 const result = await response.json();
@@ -44,6 +31,58 @@ const result = await response.json();
 service. Leaving the `using` scope stops interception for that environment.
 An origin has one owner while its environment is active. A second registration
 throws, and disposal releases the origin.
+
+## Expose resource CRUD over HTTP
+
+`api.resource<T>({ path })` creates a `SimResource<T>` and exposes it through a
+`RestResource<T>`. The returned resource delegates the state methods, so tests
+can call `widgets.seed()`, `widgets.get()` and the other state operations
+directly.
+
+Entities use a string `id` as their conventional identity. The HTTP defaults
+are:
+
+| Method   | Path           | Request body        | Success response              |
+| -------- | -------------- | ------------------- | ----------------------------- |
+| `GET`    | `/widgets`     | none                | `200` with a JSON array       |
+| `POST`   | `/widgets`     | JSON entity input   | `201` with the created entity |
+| `GET`    | `/widgets/:id` | none                | `200` with the entity         |
+| `PATCH`  | `/widgets/:id` | JSON partial entity | `200` with the updated entity |
+| `DELETE` | `/widgets/:id` | none                | `204` with no body            |
+
+The default `SimResource.create()` stores the supplied entity. Pass a `create`
+function when the simulated service generates identifiers or other fields.
+
+Missing entities return `404`. Duplicate identities return `409`. Both errors
+have a JSON body with one `error` property containing the domain error message.
+An unknown method or path throws `UnimplementedRouteError`. This loud failure
+keeps an unfinished simulation distinct from a simulated service returning a
+legitimate 404.
+
+`SimApi.handle(Request)` is the HTTP entry point. `SimEnvironment` calls that
+method for intercepted requests. Request decoding, the semantic resource
+operation and response encoding run as separate pipeline steps. JSON is the
+default request and response codec.
+
+## Share state between API representations
+
+One `SimResource` can back more than one API or version. Each `RestResource`
+delegates to the same state object.
+
+```ts
+import { SimApi, SimResource } from "@kensio/simnaril";
+
+const state = new SimResource<Widget>({});
+
+const apiV1 = new SimApi();
+const apiV2 = new SimApi();
+
+const v1 = apiV1.expose(state, { path: "/v1/widgets" });
+const v2 = apiV2.expose(state, { path: "/v2/things" });
+
+v1.seed({ id: "widget-1", name: "First widget" });
+v2.get("widget-1");
+```
 
 ## Model resource state
 
