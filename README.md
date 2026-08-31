@@ -72,6 +72,11 @@ delegates to the same state object.
 ```ts
 import { SimApi, SimResource } from "@kensio/simnaril";
 
+interface Widget {
+  id: string;
+  name: string;
+}
+
 const state = new SimResource<Widget>({});
 
 const apiV1 = new SimApi();

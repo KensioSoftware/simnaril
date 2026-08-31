@@ -28,11 +28,13 @@ export function restResourceOperations<T extends object>(
 ): HttpOperation[] {
   const collection = matchCollection(resource.path);
   const item = matchItem(resource.path);
+  const specificity = resource.path.length;
 
   return [
     {
       method: "GET",
       match: collection,
+      specificity,
       decode: decodeEmpty,
       transform: passThrough,
       operate: () => resource.list(),
@@ -41,6 +43,7 @@ export function restResourceOperations<T extends object>(
     {
       method: "POST",
       match: collection,
+      specificity,
       decode: decodeJson,
       transform: passThrough,
       operate: (input) => resource.create(input as Partial<T>),
@@ -49,6 +52,7 @@ export function restResourceOperations<T extends object>(
     {
       method: "GET",
       match: item,
+      specificity,
       decode: decodeEmpty,
       transform: passThrough,
       operate: (_input, match) => resource.get(itemIdentity(match)),
@@ -57,6 +61,7 @@ export function restResourceOperations<T extends object>(
     {
       method: "PATCH",
       match: item,
+      specificity,
       decode: decodeJson,
       transform: passThrough,
       operate: (input, match) =>
@@ -66,6 +71,7 @@ export function restResourceOperations<T extends object>(
     {
       method: "DELETE",
       match: item,
+      specificity,
       decode: decodeEmpty,
       transform: passThrough,
       operate: (_input, match) => resource.delete(itemIdentity(match)),

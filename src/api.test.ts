@@ -181,6 +181,47 @@ describe("a simulated API", () => {
     assertIdentical(secondVersion.get(widget.id), firstVersion.get(widget.id));
   });
 
+  it("selects the most specific matching resource path", async () => {
+    // Given a nested collection whose path can also identify an outer entity.
+    const api = new SimApi();
+    const widgets = api.resource<Widget>({ path: "/widgets" });
+    const favourites = api.resource<Widget>({ path: "/widgets/favourites" });
+    const outerWidget: Widget = {
+      id: "favourites",
+      name: faker.commerce.productName(),
+      status: "active",
+    };
+    const favourite: Widget = {
+      id: faker.string.uuid(),
+      name: faker.commerce.productName(),
+      status: "active",
+    };
+    widgets.seed(outerWidget);
+    favourites.seed(favourite);
+
+    // When the nested collection path is requested.
+    const response = await api.handle(request("GET", "/widgets/favourites"));
+
+    // Then the nested collection handles it ahead of the outer item route.
+    assertResponseStatus(response, 200);
+    assertObjectEquals(await response.json(), [favourite]);
+  });
+
+  it("rejects duplicate resource collection paths", () => {
+    // Given an API with an exposed resource collection.
+    const api = new SimApi();
+    api.resource<Widget>({ path: "/widgets" });
+
+    // When another resource uses the same collection path.
+    const error = assertThrowsError(() => {
+      api.resource<Widget>({ path: "/widgets" });
+    });
+
+    // Then registration fails before the route becomes ambiguous.
+    assertInstanceOf(error, TypeError);
+    assertStringIncludes(error.message, "already exposed at collection path");
+  });
+
   it("maps missing and duplicate entities to simulated responses", async () => {
     // Given an API resource containing one entity.
     const api = new SimApi();
@@ -262,18 +303,45 @@ describe("a simulated API", () => {
   });
 
   it("rejects a path that cannot identify collection and item routes", () => {
-    // Given an API and an invalid collection path.
+    // Given an API and collection paths that URL parsing would change.
     const api = new SimApi();
+    const invalidPaths = [
+      "widgets/",
+      "/widgets?version=1",
+      "/widgets#v1",
+      "/widgets/../things",
+      "/widget collection",
+    ];
 
-    // When the path is exposed.
-    const error = assertThrowsError(() => {
-      api.resource<Widget>({ path: "widgets/" });
-    });
+    // When each path is exposed.
+    const errors = invalidPaths.map((path) =>
+      assertThrowsError(() => {
+        api.resource<Widget>({ path });
+      }),
+    );
 
-    // Then the API explains the required absolute collection form.
-    assertInstanceOf(error, TypeError);
-    assertStringIncludes(error.message, 'such as "/widgets"');
-    assertStringIncludes(error.message, 'received "widgets/"');
+    // Then the API rejects every non-canonical collection form.
+    for (const [index, error] of errors.entries()) {
+      assertInstanceOf(error, TypeError);
+      assertStringIncludes(error.message, 'such as "/widgets"');
+      assertStringIncludes(error.message, `received "${invalidPaths[index]}"`);
+    }
+  });
+
+  it("treats malformed item identity encoding as an unimplemented route", async () => {
+    // Given an API resource and an item path with malformed percent encoding.
+    const api = new SimApi();
+    api.resource<Widget>({ path: "/widgets" });
+    const malformedUrl = "https://api.example.test/widgets/%E0%A4%A";
+
+    // When the malformed item path is handled.
+    const error = await assertThrowsErrorAsync(() =>
+      api.handle(new Request(malformedUrl)),
+    );
+
+    // Then route matching stays loud through the public route error.
+    assertInstanceOf(error, UnimplementedRouteError);
+    assertIdentical(error.pathname, "/widgets/%E0%A4%A");
   });
 
   it("lets codec and transformation failures stay loud", async () => {

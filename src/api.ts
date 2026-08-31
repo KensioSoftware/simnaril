@@ -17,6 +17,7 @@ export interface SimApiResourceProps<T extends object>
 /** Routes HTTP requests to stateful simulated resources. */
 export class SimApi {
   readonly #operations: HttpOperation[] = [];
+  readonly #paths = new Set<string>();
 
   /** Creates resource state and exposes its conventional HTTP operations. */
   resource<T extends object>(props: SimApiResourceProps<T>): RestResource<T> {
@@ -31,7 +32,14 @@ export class SimApi {
   ): RestResource<T> {
     this.#validatePath(props.path);
 
+    if (this.#paths.has(props.path)) {
+      throw new TypeError(
+        `A resource is already exposed at collection path "${props.path}".`,
+      );
+    }
+
     const resource = new RestResource(state, props);
+    this.#paths.add(props.path);
     this.#operations.push(...restResourceOperations(resource));
     return resource;
   }
@@ -40,6 +48,7 @@ export class SimApi {
   async handle(request: Request): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     const method = request.method.toUpperCase();
+    let selected: { match: RouteMatch; operation: HttpOperation } | undefined;
 
     for (const operation of this.#operations) {
       if (operation.method !== method) {
@@ -48,9 +57,17 @@ export class SimApi {
 
       const match = operation.match(pathname);
 
-      if (match !== undefined) {
-        return this.#run(operation, request, match);
+      if (
+        match !== undefined &&
+        (selected === undefined ||
+          operation.specificity > selected.operation.specificity)
+      ) {
+        selected = { match, operation };
       }
+    }
+
+    if (selected !== undefined) {
+      return this.#run(selected.operation, request, selected.match);
     }
 
     throw new UnimplementedRouteError(request);
@@ -77,7 +94,16 @@ export class SimApi {
   }
 
   #validatePath(path: string): void {
-    if (!/^\/[^/]+(?:\/[^/]+)*$/u.test(path)) {
+    const base = new URL("https://simnaril.invalid");
+    const url = new URL(path, base);
+
+    if (
+      url.origin !== base.origin ||
+      url.pathname !== path ||
+      url.search !== "" ||
+      url.hash !== "" ||
+      !/^\/[^/]+(?:\/[^/]+)*$/u.test(path)
+    ) {
       throw new TypeError(
         `Expected a resource collection path such as "/widgets", received "${path}".`,
       );

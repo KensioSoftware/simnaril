@@ -8,6 +8,7 @@ export interface HttpOperation {
   match: (pathname: string) => RouteMatch | undefined;
   method: string;
   operate: (input: unknown, match: RouteMatch) => unknown;
+  specificity: number;
   transform: (decoded: unknown, match: RouteMatch) => unknown;
 }
 
@@ -31,7 +32,15 @@ export const matchItem =
       return undefined;
     }
 
-    return { identity: decodeURIComponent(encodedIdentity) };
+    try {
+      return { identity: decodeURIComponent(encodedIdentity) };
+    } catch (error) {
+      if (error instanceof URIError) {
+        return undefined;
+      }
+
+      throw error;
+    }
   };
 
 /** Runs the protocol and semantic steps for a matched HTTP operation. */
