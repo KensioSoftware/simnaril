@@ -1,12 +1,9 @@
 # Simnaril
 
-In-process third-party API simulator
-
-## Run an application against a simulated service
-
-A `SimApi` holds resource state and handles HTTP requests for one simulated
-service. Register it under the service's production origin, then call the
-application without changing its base URL.
+Simnaril is a TypeScript library for simulating third-party HTTP services in a
+Node.js process. Application code keeps its production URLs and HTTP clients.
+Simnaril intercepts those requests and sends them to stateful service objects in
+memory.
 
 ```ts
 import { SimApi, SimEnvironment } from "@kensio/simnaril";
@@ -17,247 +14,24 @@ interface Widget {
 }
 
 const api = new SimApi();
-const widgets = api.resource<Widget>({ path: "/v1/widgets" });
+const widgets = api.resource<Widget>({ path: "/widgets" });
 widgets.seed({ id: "widget-1", name: "First widget" });
 
-using sim = new SimEnvironment();
-sim.register("https://api.example.com", api);
+using environment = new SimEnvironment();
+environment.register("https://api.example.com", api);
 
-const response = await fetch("https://api.example.com/v1/widgets");
-const result = await response.json();
+const response = await fetch("https://api.example.com/widgets/widget-1");
+const widget = (await response.json()) as Widget;
 ```
 
-`SimEnvironment` routes every path at the registered origin to the same
-service. Leaving the `using` scope stops interception for that environment.
-An origin has one owner while its environment is active. A second registration
-throws, and disposal releases the origin.
+Simnaril requires Node.js 24 or later.
 
-## Control requests outside the simulation
+## Documentation
 
-An active `SimEnvironment` rejects a request when no registered service claims
-its origin. The default error names the method, URL and missing origin
-registration. Requests to a registered `SimApi` use a separate
-`UnimplementedRouteError` when the origin is known but its route is absent.
-Request clients can wrap either error as the cause of a network error. Node's
-`fetch` reports `TypeError: fetch failed` with the Simnaril error in `cause`.
-
-Pass-through to the network requires an explicit environment policy:
-
-```ts
-using sim = new SimEnvironment({
-  unhandledRequest: "passthrough",
-});
-```
-
-Registered origins remain simulated under this policy. Only requests outside
-the registered origins reach the network.
-
-## Expose resource CRUD over HTTP
-
-`api.resource<T>({ path })` creates a `SimResource<T>` and exposes it through a
-`RestResource<T>`. The returned resource delegates the state methods, so tests
-can call `widgets.seed()`, `widgets.get()` and the other state operations
-directly.
-
-Entities use a string `id` as their conventional identity. The HTTP defaults
-are:
-
-| Method   | Path           | Request body        | Success response              |
-| -------- | -------------- | ------------------- | ----------------------------- |
-| `GET`    | `/widgets`     | none                | `200` with a JSON array       |
-| `POST`   | `/widgets`     | JSON entity input   | `201` with the created entity |
-| `GET`    | `/widgets/:id` | none                | `200` with the entity         |
-| `PATCH`  | `/widgets/:id` | JSON partial entity | `200` with the updated entity |
-| `DELETE` | `/widgets/:id` | none                | `204` with no body            |
-
-The default `SimResource.create()` stores the supplied entity. Pass a `create`
-function when the simulated service generates identifiers or other fields.
-
-Missing entities return `404`. Duplicate identities return `409`. Both errors
-have a JSON body with one `error` property containing the domain error message.
-An unknown method or path throws `UnimplementedRouteError`. This loud failure
-keeps an unfinished simulation distinct from a simulated service returning a
-legitimate 404.
-
-`SimApi.handle(Request)` is the HTTP entry point. `SimEnvironment` calls that
-method for intercepted requests. Request decoding, the semantic resource
-operation and response encoding run as separate pipeline steps. JSON is the
-default request and response codec.
-
-## Customize resource operations
-
-The customization API has four levels. Start with route configuration, then
-move to a semantic override, a resource operation or a raw HTTP operation as
-the service behaviour requires.
-
-### Configure a supplied route
-
-The `operations` property changes the method or resource-relative path of a
-supplied operation. Its decoder, semantic behaviour, error translation and
-encoder stay in place.
-
-```ts
-const widgets = api.resource<Widget>({
-  path: "/widgets",
-  operations: {
-    update: {
-      method: "POST",
-      path: "/:id/changes",
-    },
-  },
-});
-```
-
-The supplied operation names are `list`, `create`, `get`, `update` and
-`delete`.
-
-### Override supplied semantic behaviour
-
-`override()` replaces the semantic handler for one supplied operation. The
-handler receives decoded `input`, its `resource`, the original `request`,
-parsed path `params` and parsed `query` parameters. It returns a semantic
-result. Simnaril encodes that result with the supplied operation's status and
-response codec.
-
-```ts
-widgets.operations.create.override({
-  handle({ input, resource, request }) {
-    return resource.create({
-      ...input,
-      id: request.headers.get("x-widget-id") ?? crypto.randomUUID(),
-    });
-  },
-});
-```
-
-State errors still use the API's error translation. Other supplied operations
-keep their default behaviour.
-
-### Add a resource operation
-
-`resource.operation()` adds a named domain action below the resource path.
-The handler uses the same semantic context and response pipeline as a supplied
-operation. A request body is decoded as JSON when present. A result is encoded
-as JSON with status `200`, and an empty result becomes status `204`.
-
-```ts
-widgets.operation("archive", {
-  method: "POST",
-  path: "/:id/archive",
-  handle({ params, resource }) {
-    const id = params["id"];
-
-    if (id === undefined) {
-      throw new TypeError("The archive route requires an id.");
-    }
-
-    return resource.update(id, { status: "archived" });
-  },
-});
-```
-
-### Add a raw HTTP operation
-
-`api.operation()` handles an endpoint that needs direct control of its
-`Response`. Its path is absolute. Simnaril matches the route and passes a
-context object containing `request`, `params` and `query`.
-
-```ts
-api.operation("GET", "/reports/:reportId", ({ params, query }) => {
-  return Response.json({
-    reportId: params["reportId"],
-    view: query.get("view"),
-  });
-});
-```
-
-Supplied, overridden, resource and raw operations are all reached through
-`SimApi.handle(Request)`.
-
-## Apply middleware
-
-Register middleware with `use()` at API, resource or operation scope.
-Middleware takes the parsed HTTP context and a `next` function. It can inspect
-or replace the response returned by `next()`.
-
-```ts
-api.use(addRequestId);
-widgets.use(applyRateLimit);
-widgets.operations.create.use(recordCreationLatency);
-```
-
-`api.operation()` and `resource.operation()` return their operation object, so
-custom operations can use the same operation-level method.
-
-Requests always enter middleware in this order:
-
-```text
-API middleware
-  -> resource middleware
-    -> operation middleware
-      -> operation
-```
-
-Responses unwind through operation, resource and API middleware. Raw HTTP
-operations have API and operation middleware because they do not belong to a
-resource.
-
-## Share state between API representations
-
-One `SimResource` can back more than one API or version. Each `RestResource`
-delegates to the same state object.
-
-```ts
-import { SimApi, SimResource } from "@kensio/simnaril";
-
-interface Widget {
-  id: string;
-  name: string;
-}
-
-const state = new SimResource<Widget>({});
-
-const apiV1 = new SimApi();
-const apiV2 = new SimApi();
-
-const v1 = apiV1.expose(state, { path: "/v1/widgets" });
-const v2 = apiV2.expose(state, { path: "/v2/things" });
-
-v1.seed({ id: "widget-1", name: "First widget" });
-v2.get("widget-1");
-```
-
-## Model resource state
-
-`SimResource<T>` owns the in-memory state for one entity type. Entities use
-their `id` property as the identity unless the resource supplies an `identify`
-function. The conventional identity is a string-valued `id`. An `identify`
-function can select another state key.
-
-`seed()` stores an exact entity for test arrangement. `create()` runs the
-resource's creation behaviour before storing the result.
-
-```ts
-const widgets = new SimResource<Widget>({
-  create: (input) => ({
-    id: crypto.randomUUID(),
-    name: input.name ?? "Untitled widget",
-  }),
-});
-
-widgets.seed({ id: "widget-1", name: "First widget" });
-const created = widgets.create({ name: "Second widget" });
-
-widgets.get(created.id);
-widgets.find("missing"); // undefined
-widgets.update(created.id, { name: "Renamed widget" });
-widgets.delete(created.id);
-widgets.clear();
-```
-
-`get()` throws `EntityNotFoundError` when the identity is absent. `seed()` and
-`create()` throw `DuplicateEntityError` when the identity already exists.
-
-## Design decisions
-
-- [HTTP interception](docs/decisions/http-interception.md)
+- [Getting started](docs/getting-started/README.md)
+- [Simulation environments](docs/simulation-environments/README.md)
+- [Resource state](docs/resource-state/README.md)
+- [REST resources](docs/rest-resources/README.md)
+- [Custom operations](docs/custom-operations/README.md)
+- [Middleware](docs/middleware/README.md)
+- [Composing a simulation](docs/composing-a-simulation/README.md)
