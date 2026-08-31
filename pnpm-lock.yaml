@@ -15,6 +15,9 @@ importers:
       '@faker-js/faker':
         specifier: ^10.6.0
         version: 10.6.0
+      '@kensio/part-factory':
+        specifier: ^1.10.1
+        version: 1.10.1
       '@kensio/smartass':
         specifier: ^1.37.6
         version: 1.37.6
@@ -111,6 +114,10 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@kensio/part-factory@1.10.1':
+    resolution: {integrity: sha512-P/qUVhAaMF98uZ4NsSfiEp5WhfCRSN44nGQDgGY8MA6w9CkCVs4IdxguPGfK7+qNBCViK/xXN/gpj099YiSf1A==}
+    engines: {node: '>=22.0.0'}
 
   '@kensio/smartass@1.37.6':
     resolution: {integrity: sha512-qaCsowK5YbHPpOOuqHXQt18sUCSKtRC7hCvRLot6S97S0s74wlkqz2FInra9C9w9r6HYkwmtMwxQwQ//Erb/yQ==}
@@ -2246,6 +2253,8 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@kensio/part-factory@1.10.1': {}
 
   '@kensio/smartass@1.37.6': {}
 
