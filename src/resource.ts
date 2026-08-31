@@ -1,6 +1,18 @@
 import { DuplicateEntityError } from "./duplicate-entity-error.js";
 import { EntityNotFoundError } from "./entity-not-found-error.js";
 
+function identifyById(entity: object): string {
+  const identity = (entity as { id?: unknown }).id;
+
+  if (typeof identity !== "string") {
+    throw new TypeError(
+      "The conventional SimResource identity requires a string id. Provide identify for another entity shape.",
+    );
+  }
+
+  return identity;
+}
+
 /** Configures the state and domain behaviour for one simulated resource. */
 export interface SimResourceProps<T extends object> {
   create?: (input: Partial<T>) => T;
@@ -18,8 +30,7 @@ export class SimResource<T extends object> {
   constructor(props: SimResourceProps<T>) {
     this.name = props.name;
     this.#createEntity = props.create ?? ((input): T => input as T);
-    this.#identify =
-      props.identify ?? ((entity): string => (entity as { id: string }).id);
+    this.#identify = props.identify ?? identifyById;
   }
 
   /** Stores an exact entity for simulation arrangement. */

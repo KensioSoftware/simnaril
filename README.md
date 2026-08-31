@@ -49,7 +49,8 @@ throws, and disposal releases the origin.
 
 `SimResource<T>` owns the in-memory state for one entity type. Entities use
 their `id` property as the identity unless the resource supplies an `identify`
-function.
+function. The conventional identity is a string-valued `id`. An `identify`
+function can select another state key.
 
 `seed()` stores an exact entity for test arrangement. `create()` runs the
 resource's creation behaviour before storing the result.

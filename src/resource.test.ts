@@ -53,6 +53,43 @@ describe("a simulated resource", () => {
     assertObjectEquals(listed, [first, second]);
   });
 
+  it("requires a string id when using the identity convention", () => {
+    // Given entity shapes with no string id and one resource with an explicit
+    // identity function.
+    interface ExternalWidget {
+      code: string;
+      name: string;
+    }
+
+    const noId = new SimResource<ExternalWidget>({});
+    const numericId = new SimResource<{ id: number }>({});
+    const identified = new SimResource<ExternalWidget>({
+      identify: (widget) => widget.code,
+    });
+    const widget = {
+      code: faker.string.uuid(),
+      name: faker.commerce.productName(),
+    };
+
+    // When the conventional resources seed incompatible entities and the
+    // configured resource seeds the same shape.
+    const noIdError = assertThrowsError(() => noId.seed(widget));
+    const numericIdError = assertThrowsError(() =>
+      numericId.seed({ id: faker.number.int() }),
+    );
+    identified.seed(widget);
+
+    // Then the invalid conventions fail before storing a bad key, while the
+    // explicit identity supports the other entity shape.
+    assertInstanceOf(noIdError, TypeError);
+    assertStringIncludes(noIdError.message, "requires a string id");
+    assertStringIncludes(noIdError.message, "Provide identify");
+    assertInstanceOf(numericIdError, TypeError);
+    assertObjectEquals(noId.list(), []);
+    assertObjectEquals(numericId.list(), []);
+    assertIdentical(identified.get(widget.code), widget);
+  });
+
   it("uses creation behaviour for create and bypasses it for seed", () => {
     // Given a resource whose service creation behaviour supplies an id and
     // status.
