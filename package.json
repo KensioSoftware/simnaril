@@ -66,5 +66,8 @@
   },
   "author": "Kensio Software",
   "license": "Apache-2.0",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@mswjs/interceptors": "^0.42.3"
+  }
 }
