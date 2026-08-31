@@ -38,7 +38,7 @@ describe("HTTP interception", () => {
     const origin = `http://127.0.0.1:${address.port}`;
     const interceptedUrl = `${origin}/intercepted`;
     const passedThroughUrl = `${origin}/passed-through`;
-    const interception = interceptHttpRequests((request) => {
+    using interception = interceptHttpRequests((request) => {
       if (request.url === interceptedUrl) {
         return new Response(simulatedBody);
       }
