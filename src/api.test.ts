@@ -274,10 +274,47 @@ describe("a simulated API", () => {
     assertInstanceOf(error, UnimplementedRouteError);
     assertIdentical(error.method, "GET");
     assertIdentical(error.url, url);
-    assertStringIncludes(error.message, `GET ${url} reached SimApi`);
-    assertStringIncludes(error.message, "no handler for GET /widgets/");
+    assertIdentical(
+      error.message,
+      `GET ${url} reached SimApi, but SimApi has no handler for GET ${new URL(url).pathname}.`,
+    );
     assertInstanceOf(unknownError, UnimplementedRouteError);
     assertIdentical(unknownError.pathname, "/status");
+    assertIdentical(
+      unknownError.message,
+      `GET ${unknownUrl} reached SimApi, but SimApi has no handler for GET /status.`,
+    );
+  });
+
+  it("keeps a missing entity distinct from an unimplemented route through fetch", async () => {
+    // Given a simulated origin with conventional widget routes.
+    const origin = `https://${faker.internet.domainName()}`;
+    const api = new SimApi();
+    api.resource<Widget>({ path: "/widgets" });
+    using environment = new SimEnvironment();
+    environment.register(origin, api);
+    const missingId = faker.string.uuid();
+    const missingUrl = `${origin}/widgets/${missingId}`;
+    const unimplementedUrl = `${origin}/status`;
+
+    // When application code requests a missing widget and an unknown route.
+    const missingResponse = await fetch(missingUrl);
+    const routeError = await assertThrowsErrorAsync(() =>
+      fetch(unimplementedUrl),
+    );
+
+    // Then the matched route returns its simulated 404, while the unknown route
+    // throws the complete public route error.
+    assertResponseStatus(missingResponse, 404);
+    assertObjectEquals(await missingResponse.json(), {
+      error: `No entity exists with identity "${missingId}".`,
+    });
+    assertInstanceOf(routeError, TypeError);
+    assertInstanceOf(routeError.cause, UnimplementedRouteError);
+    assertIdentical(
+      routeError.cause.message,
+      `GET ${unimplementedUrl} reached SimApi, but SimApi has no handler for GET /status.`,
+    );
   });
 
   it("routes ordinary fetch calls through SimApi", async () => {

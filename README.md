@@ -32,6 +32,26 @@ service. Leaving the `using` scope stops interception for that environment.
 An origin has one owner while its environment is active. A second registration
 throws, and disposal releases the origin.
 
+## Control requests outside the simulation
+
+An active `SimEnvironment` rejects a request when no registered service claims
+its origin. The default error names the method, URL and missing origin
+registration. Requests to a registered `SimApi` use a separate
+`UnimplementedRouteError` when the origin is known but its route is absent.
+Request clients can wrap either error as the cause of a network error. Node's
+`fetch` reports `TypeError: fetch failed` with the Simnaril error in `cause`.
+
+Pass-through to the network requires an explicit environment policy:
+
+```ts
+using sim = new SimEnvironment({
+  unhandledRequest: "passthrough",
+});
+```
+
+Registered origins remain simulated under this policy. Only requests outside
+the registered origins reach the network.
+
 ## Expose resource CRUD over HTTP
 
 `api.resource<T>({ path })` creates a `SimResource<T>` and exposes it through a

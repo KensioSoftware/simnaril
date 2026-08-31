@@ -38,6 +38,9 @@ function startInterceptor(): HttpRequestInterceptor {
 
     controller.respondWith(response);
   });
+  interceptor.on("unhandledException", ({ controller, error }) => {
+    controller.errorWith(error);
+  });
 
   interceptor.apply();
   return interceptor;
