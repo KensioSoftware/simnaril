@@ -11,9 +11,10 @@ import { describe, it } from "vitest";
 
 import {
   createGitHubRestApi,
-  type GitHubGist,
+  githubGistFactory,
+  githubIssueFactory,
+  githubRepositoryFactory,
   type GitHubIssue,
-  type GitHubRepository,
 } from "#test/github-rest-api.js";
 
 describe("the GitHub REST API fixture", () => {
@@ -41,58 +42,10 @@ describe("the GitHub REST API fixture", () => {
     });
   };
 
-  const repository = (): GitHubRepository => {
-    const owner = faker.internet.username();
-    const name = faker.word.noun();
-    const fullName = `${owner}/${name}`;
-    return {
-      full_name: fullName,
-      html_url: `https://github.com/${fullName}`,
-      id: faker.number.int({ min: 1, max: 2_000_000_000 }),
-      name,
-      owner: { login: owner },
-      private: faker.datatype.boolean(),
-      url: `https://api.github.com/repos/${fullName}`,
-    };
-  };
-
-  const issue = (
-    owner: string,
-    repositoryName: string,
-    number: number,
-  ): GitHubIssue => {
-    const repositoryUrl = `https://api.github.com/repos/${owner}/${repositoryName}`;
-    return {
-      body: faker.lorem.paragraph(),
-      id: faker.number.int({ min: 1, max: 2_000_000_000 }),
-      number,
-      repository_url: repositoryUrl,
-      state: "open",
-      title: faker.lorem.sentence(),
-      updated_at: faker.date.recent().toISOString(),
-      url: `${repositoryUrl}/issues/${number}`,
-    };
-  };
-
-  const gist = (): GitHubGist => {
-    const id = faker.string.hexadecimal({ length: 32, prefix: "" });
-    return {
-      description: faker.lorem.sentence(),
-      files: {
-        [faker.system.fileName()]: { content: faker.lorem.paragraph() },
-      },
-      html_url: `https://gist.github.com/${id}`,
-      id,
-      public: faker.datatype.boolean(),
-      updated_at: faker.date.recent().toISOString(),
-      url: `https://api.github.com/gists/${id}`,
-    };
-  };
-
   it("serves arranged repository state at GitHub's production origin", async () => {
     // Given a repository in a composed GitHub simulation.
     using github = createGitHubRestApi();
-    const expected = repository();
+    const expected = githubRepositoryFactory.make();
     github.repositories.seed(expected);
 
     // When application code uses its production GitHub configuration.
@@ -108,8 +61,12 @@ describe("the GitHub REST API fixture", () => {
     using github = createGitHubRestApi();
     const owner = faker.internet.username();
     const repositoryName = faker.word.noun();
-    const existing = issue(owner, repositoryName, 1);
-    const unrelated = issue(faker.internet.username(), faker.word.noun(), 1);
+    const existing = githubIssueFactory.make({
+      number: 1,
+      owner,
+      repositoryName,
+    });
+    const unrelated = githubIssueFactory.make({ number: 1 });
     github.issues.seed(existing);
     github.issues.seed(unrelated);
     const title = faker.lorem.sentence();
@@ -160,7 +117,11 @@ describe("the GitHub REST API fixture", () => {
   it("paginates collection responses with GitHub link headers", async () => {
     // Given more gists than one requested page can hold.
     using github = createGitHubRestApi();
-    const arranged = [gist(), gist(), gist()];
+    const arranged = [
+      githubGistFactory.make(),
+      githubGistFactory.make(),
+      githubGistFactory.make(),
+    ];
     for (const item of arranged) {
       github.gists.seed(item);
     }
@@ -198,7 +159,7 @@ describe("the GitHub REST API fixture", () => {
   it("honours conditional requests until resource state changes", async () => {
     // Given a gist whose current representation has been fetched.
     using github = createGitHubRestApi();
-    const arranged = gist();
+    const arranged = githubGistFactory.make();
     github.gists.seed(arranged);
     const firstResponse = await githubRequest(`/gists/${arranged.id}`);
     const etag = firstResponse.headers.get("etag") ?? "";
@@ -227,7 +188,7 @@ describe("the GitHub REST API fixture", () => {
   it("records rate-limit use in persistent world state", async () => {
     // Given a GitHub simulation with its core rate limit arranged by the composition root.
     using github = createGitHubRestApi();
-    const expected = repository();
+    const expected = githubRepositoryFactory.make();
     github.repositories.seed(expected);
 
     // When application code makes two requests.

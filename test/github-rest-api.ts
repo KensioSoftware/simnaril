@@ -4,6 +4,7 @@ import {
   SimResource,
   type RestResource,
 } from "../src/index.js";
+import { githubRateLimitFactory } from "./github-rest-api-factories.js";
 import { createGitHubIssues } from "./github-rest-api-issues.js";
 import {
   addRateLimitHeaders,
@@ -23,6 +24,11 @@ export type {
   GitHubRateLimit,
   GitHubRepository,
 } from "./github-rest-api-types.js";
+export {
+  githubGistFactory,
+  githubIssueFactory,
+  githubRepositoryFactory,
+} from "./github-rest-api-factories.js";
 
 const githubOrigin = "https://api.github.com";
 
@@ -39,13 +45,7 @@ export const createGitHubRestApi = (): SimGitHub => {
   const environment = new SimEnvironment();
   const api = new SimApi();
   const rateLimits = new SimResource<GitHubRateLimit>({ name: "rate limit" });
-  rateLimits.seed({
-    id: "core",
-    limit: 5000,
-    remaining: 5000,
-    reset: Math.floor(Date.now() / 1000) + 3600,
-    used: 0,
-  });
+  rateLimits.seed(githubRateLimitFactory.make());
   api.use(addRateLimitHeaders(rateLimits));
 
   const repositories = api.resource<GitHubRepository>({
