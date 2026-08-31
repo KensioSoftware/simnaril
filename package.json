@@ -4,6 +4,7 @@
   "description": "In-process simulation of third-party HTTP services",
   "repository": "https://github.com/KensioSoftware/simnaril",
   "bugs": "https://github.com/KensioSoftware/simnaril/issues",
+  "homepage": "https://simnaril.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
