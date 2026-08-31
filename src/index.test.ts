@@ -1,16 +1,22 @@
 import { faker } from "@faker-js/faker";
 import {
   assertIdentical,
+  assertInstanceOf,
   assertObjectEquals,
   assertStringIncludes,
   assertThrowsError,
+  assertThrowsErrorAsync,
 } from "@kensio/smartass";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, it } from "vitest";
 
-import { SimEnvironment, type SimService } from "./index.js";
+import {
+  SimEnvironment,
+  type SimService,
+  UnclaimedOriginError,
+} from "./index.js";
 
 describe("a simulation environment", () => {
   class SimWidgets implements SimService {
@@ -132,6 +138,71 @@ describe("a simulation environment", () => {
 
     // Then the request reaches the real origin again.
     assertIdentical(await response.text(), realBody);
+  });
+
+  it("refuses a request whose origin no simulation claims by default", async () => {
+    // Given a live environment and a real HTTP origin outside its simulations.
+    let requestsReceived = 0;
+    await using server = createServer((_request, response) => {
+      requestsReceived += 1;
+      response.end(faker.string.uuid());
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address() as AddressInfo;
+    const origin = `http://127.0.0.1:${address.port}`;
+    const url = `${origin}/v1/widgets?expand=owner`;
+    using environment = new SimEnvironment();
+    environment.register(
+      `https://${faker.internet.domainName()}`,
+      new SimWidgets(faker.string.uuid()),
+    );
+
+    // When application code sends a request to the unclaimed origin.
+    const error = await assertThrowsErrorAsync(() =>
+      fetch(url, { method: "POST" }),
+    );
+
+    // Then the environment names the request and missing origin registration,
+    // and the request never reaches the network.
+    assertInstanceOf(error, TypeError);
+    assertInstanceOf(error.cause, UnclaimedOriginError);
+    assertIdentical(
+      error.cause.message,
+      `POST ${url} reached SimEnvironment, but no simulated service is registered for origin ${origin}.`,
+    );
+    assertIdentical(error.cause.method, "POST");
+    assertIdentical(error.cause.origin, origin);
+    assertIdentical(error.cause.url, url);
+    assertIdentical(requestsReceived, 0);
+  });
+
+  it("passes an unclaimed request through when asked", async () => {
+    // Given an environment whose unhandled-request policy permits the network.
+    const responseBody = faker.string.uuid();
+    await using server = createServer((_request, response) => {
+      response.end(responseBody);
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address() as AddressInfo;
+    const origin = `http://127.0.0.1:${address.port}`;
+    const simulatedOrigin = `https://${faker.internet.domainName()}`;
+    const simulatedBody = faker.string.uuid();
+    using environment = new SimEnvironment({
+      unhandledRequest: "passthrough",
+    });
+    environment.register(simulatedOrigin, new SimWidgets(simulatedBody));
+
+    // When application code sends requests to the unclaimed and simulated
+    // origins.
+    const response = await fetch(`${origin}/health`);
+    const simulatedResponse = await fetch(`${simulatedOrigin}/widgets`);
+
+    // Then the unclaimed request reaches the network, and the registered
+    // origin stays simulated.
+    assertIdentical(await response.text(), responseBody);
+    assertIdentical(await simulatedResponse.text(), simulatedBody);
   });
 
   it("rejects a URL whose path would make registration ambiguous", () => {
