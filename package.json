@@ -43,7 +43,7 @@
     "@faker-js/faker": "^10.6.0",
     "@kensio/smartass": "^1.37.6",
     "@semantic-release/exec": "7.1.0",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.1.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@vitest/coverage-v8": "^4.1.11",
     "conventional-changelog-conventionalcommits": "9.3.1",
