@@ -10,7 +10,7 @@ import type { RequestDecoder } from "./request-decoder.js";
 import { compileRoute } from "./route.js";
 import { semanticHttpOperation } from "./semantic-http-operation.js";
 
-interface SuppliedOperationProps<TInput, TOutput, T extends object> {
+interface SuppliedOperationProps<TInput, TOutput, T extends object, TCreate> {
   configuration: RestResourceOperationConfiguration | undefined;
   decode: RequestDecoder;
   defaultMethod: string;
@@ -18,18 +18,18 @@ interface SuppliedOperationProps<TInput, TOutput, T extends object> {
   enabled: boolean;
   encode: (output: unknown) => Promise<Response> | Response;
   handle: (
-    context: SemanticOperationContext<TInput, RestResource<T>>,
+    context: SemanticOperationContext<TInput, RestResource<T, TCreate>>,
   ) => Promise<TOutput> | TOutput;
-  resource: RestResource<T>;
+  resource: RestResource<T, TCreate>;
   resourceMiddleware: readonly HttpMiddleware[];
   requiredParameters?: readonly string[];
 }
 
-export const suppliedOperation = <TInput, TOutput, T extends object>(
-  props: SuppliedOperationProps<TInput, TOutput, T>,
+export const suppliedOperation = <TInput, TOutput, T extends object, TCreate>(
+  props: SuppliedOperationProps<TInput, TOutput, T, TCreate>,
 ): {
   http?: HttpOperation;
-  semantic: SemanticOperation<TInput, TOutput, RestResource<T>>;
+  semantic: SemanticOperation<TInput, TOutput, RestResource<T, TCreate>>;
 } => {
   const semantic = new SemanticOperation(props.handle);
 

@@ -105,11 +105,15 @@ describe("a simulated API", () => {
     const generatedId = faker.string.uuid();
     const widgets = new SimApi().resource<Widget>({
       path: "/widgets",
-      create: (input) => ({
-        id: generatedId,
-        name: input.name ?? faker.commerce.productName(),
-        status: "active",
-      }),
+      create: (input) => {
+        expectTypeOf(input).toEqualTypeOf<Partial<Widget>>();
+
+        return {
+          id: generatedId,
+          name: input.name ?? faker.commerce.productName(),
+          status: "active",
+        };
+      },
     });
     const seeded: Widget = {
       id: faker.string.uuid(),

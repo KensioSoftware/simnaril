@@ -14,8 +14,8 @@ import { resourceOperation } from "./resource-operation.js";
 import { restResourceOperations } from "./rest-resource-operations.js";
 
 /** Registers supplied and custom operations owned by one REST resource. */
-export class ResourceOperationRegistry<T extends object> {
-  readonly operations: RestResourceOperations<T>;
+export class ResourceOperationRegistry<T extends object, TCreate> {
+  readonly operations: RestResourceOperations<T, TCreate>;
   readonly #httpOperations: HttpOperation[];
   readonly #middleware: HttpMiddleware[] = [];
   readonly #names = new Set<string>([
@@ -25,11 +25,11 @@ export class ResourceOperationRegistry<T extends object> {
     "update",
     "delete",
   ]);
-  readonly #resource: RestResource<T>;
+  readonly #resource: RestResource<T, TCreate>;
   readonly #decode: RequestDecoder | undefined;
   #registerOperation: ((operation: HttpOperation) => void) | undefined;
 
-  constructor(resource: RestResource<T>, props: RestResourceProps) {
+  constructor(resource: RestResource<T, TCreate>, props: RestResourceProps) {
     this.#resource = resource;
     this.#decode = props.decode;
     const supplied = restResourceOperations(resource, props, this.#middleware);
@@ -43,8 +43,8 @@ export class ResourceOperationRegistry<T extends object> {
 
   add<TInput, TOutput>(
     name: string,
-    props: ResourceOperationProps<T, TInput, TOutput>,
-  ): SemanticOperation<TInput, TOutput, RestResource<T>> {
+    props: ResourceOperationProps<T, TInput, TOutput, TCreate>,
+  ): SemanticOperation<TInput, TOutput, RestResource<T, TCreate>> {
     if (this.#names.has(name)) {
       throw new TypeError(
         `An operation named "${name}" already exists on resource path "${this.#resource.path}".`,

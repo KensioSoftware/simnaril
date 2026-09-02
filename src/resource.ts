@@ -14,22 +14,22 @@ function identifyById(entity: object): string {
 }
 
 /** Configures the state and domain behaviour for one simulated resource. */
-export interface SimResourceProps<T extends object> {
-  create?: (input: Partial<T>) => T;
+export interface SimResourceProps<T extends object, TCreate = Partial<T>> {
+  create?: (input: TCreate) => T;
   identify?: (entity: T) => string;
   name?: string;
 }
 
 /** Owns the in-memory state and domain operations for one entity type. */
-export class SimResource<T extends object> {
+export class SimResource<T extends object, TCreate = Partial<T>> {
   readonly name: string | undefined;
-  readonly #createEntity: (input: Partial<T>) => T;
+  readonly #createEntity: (input: TCreate) => T;
   readonly #entities = new Map<string, T>();
   readonly #identify: (entity: T) => string;
 
-  constructor(props: SimResourceProps<T> = {}) {
+  constructor(props: SimResourceProps<T, TCreate> = {}) {
     this.name = props.name;
-    this.#createEntity = props.create ?? ((input): T => input as T);
+    this.#createEntity = props.create ?? ((input): T => input as unknown as T);
     this.#identify = props.identify ?? identifyById;
   }
 
@@ -39,7 +39,7 @@ export class SimResource<T extends object> {
   }
 
   /** Runs the resource's creation behaviour and stores its result. */
-  create(input: Partial<T>): T {
+  create(input: TCreate): T {
     return this.#insert(this.#createEntity(input));
   }
 

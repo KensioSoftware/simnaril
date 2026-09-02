@@ -10,19 +10,29 @@ import type { RequestDecoder } from "./request-decoder.js";
 import type { CompiledRoute } from "./route.js";
 import { normalizeMethod } from "./route.js";
 
-interface SemanticHttpOperationProps<T extends object, TInput, TOutput> {
+interface SemanticHttpOperationProps<
+  T extends object,
+  TCreate,
+  TInput,
+  TOutput,
+> {
   decode: RequestDecoder;
   encode: (output: unknown) => Promise<Response> | Response;
   method: string;
-  resource: RestResource<T>;
+  resource: RestResource<T, TCreate>;
   resourceMiddleware: readonly HttpMiddleware[];
   route: CompiledRoute;
-  semantic: SemanticOperation<TInput, TOutput, RestResource<T>>;
+  semantic: SemanticOperation<TInput, TOutput, RestResource<T, TCreate>>;
 }
 
 /** Adapts a semantic resource operation to shared HTTP execution. */
-export function semanticHttpOperation<T extends object, TInput, TOutput>(
-  props: SemanticHttpOperationProps<T, TInput, TOutput>,
+export function semanticHttpOperation<
+  T extends object,
+  TCreate,
+  TInput,
+  TOutput,
+>(
+  props: SemanticHttpOperationProps<T, TCreate, TInput, TOutput>,
 ): HttpOperation {
   return {
     ...props.route,

@@ -5,7 +5,7 @@ import {
   assertObjectEquals,
   assertResponseStatus,
 } from "@kensio/smartass";
-import { describe, it } from "vitest";
+import { describe, expectTypeOf, it } from "vitest";
 
 import {
   decodeForm,
@@ -63,15 +63,21 @@ describe("a simulation composed of every piece", () => {
           : undefined,
     });
 
-    const sessions = api.resource<Session>({
+    const sessions = api.resource<Session, Created>({
       name: "session",
       path: "/v1/checkout/sessions",
       create: (input) => ({
-        amount_total: totalOf(input as Created),
+        amount_total: totalOf(input),
         id: `cs_test_${faker.string.alphanumeric(10)}`,
         status: "open",
       }),
     });
+    expectTypeOf<(input: Created) => Session>().toEqualTypeOf<
+      typeof sessions.create
+    >();
+    expectTypeOf<(input: Created) => Session>().toEqualTypeOf<
+      typeof sessions.state.create
+    >();
 
     return {
       api,

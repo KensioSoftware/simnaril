@@ -18,11 +18,11 @@ const requiredItemParameters = (props: RestResourceProps): readonly string[] =>
   props.locate === undefined ? ["id"] : [];
 
 /** Builds conventional collection and item operations for one resource. */
-export function restResourceOperations<T extends object>(
-  resource: RestResource<T>,
+export function restResourceOperations<T extends object, TCreate>(
+  resource: RestResource<T, TCreate>,
   props: RestResourceProps,
   resourceMiddleware: readonly HttpMiddleware[] = [],
-): { http: HttpOperation[]; semantic: RestResourceOperations<T> } {
+): { http: HttpOperation[]; semantic: RestResourceOperations<T, TCreate> } {
   const configuration = props.operations ?? {};
   const listConfiguration = configuredOperation(configuration.list);
   const createConfiguration = configuredOperation(configuration.create);
@@ -31,7 +31,7 @@ export function restResourceOperations<T extends object>(
   const deleteConfiguration = configuredOperation(configuration.delete);
   const itemPath = props.itemPath ?? "/:id";
   const itemParameters = requiredItemParameters(props);
-  const list = suppliedOperation<unknown, T[], T>({
+  const list = suppliedOperation<unknown, T[], T, TCreate>({
     resource,
     resourceMiddleware,
     configuration: listConfiguration,
@@ -42,7 +42,7 @@ export function restResourceOperations<T extends object>(
     handle: ({ resource: operationResource }) => operationResource.list(),
     encode: encodeJson(200),
   });
-  const create = suppliedOperation<Partial<T>, T, T>({
+  const create = suppliedOperation<TCreate, T, T, TCreate>({
     resource,
     resourceMiddleware,
     configuration: createConfiguration,
@@ -54,7 +54,7 @@ export function restResourceOperations<T extends object>(
       operationResource.create(input),
     encode: encodeJson(201),
   });
-  const get = suppliedOperation<unknown, T, T>({
+  const get = suppliedOperation<unknown, T, T, TCreate>({
     resource,
     resourceMiddleware,
     configuration: getConfiguration,
@@ -67,7 +67,7 @@ export function restResourceOperations<T extends object>(
     encode: encodeJson(200),
     requiredParameters: itemParameters,
   });
-  const update = suppliedOperation<Partial<T>, T, T>({
+  const update = suppliedOperation<Partial<T>, T, T, TCreate>({
     resource,
     resourceMiddleware,
     configuration: updateConfiguration,
@@ -80,7 +80,7 @@ export function restResourceOperations<T extends object>(
     encode: encodeJson(200),
     requiredParameters: itemParameters,
   });
-  const deleteOperation = suppliedOperation<unknown, T, T>({
+  const deleteOperation = suppliedOperation<unknown, T, T, TCreate>({
     resource,
     resourceMiddleware,
     configuration: deleteConfiguration,
