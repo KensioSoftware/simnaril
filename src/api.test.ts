@@ -747,6 +747,41 @@ describe("a simulated API", () => {
     assertObjectEquals(await response.json(), {});
   });
 
+  it("requires path parameters to be own string-valued properties", () => {
+    // Given inherited, undefined and explicitly provided path parameters.
+    const explicitValue = faker.string.uuid();
+    const params = Object.create({
+      constructor: faker.string.uuid(),
+    }) as Record<string, string>;
+    Object.defineProperty(params, "toString", { value: explicitValue });
+    const undefinedParams = { id: undefined } as unknown as Record<
+      string,
+      string
+    >;
+
+    // When each parameter is required.
+    const inheritedError = assertThrowsError(() =>
+      requirePathParameter(params, "constructor"),
+    );
+    const undefinedError = assertThrowsError(() =>
+      requirePathParameter(undefinedParams, "id"),
+    );
+    const explicitResult = requirePathParameter(params, "toString");
+
+    // Then only the explicitly provided string is returned.
+    assertInstanceOf(inheritedError, TypeError);
+    assertIdentical(
+      inheritedError.message,
+      'Matched operation has no ":constructor" path parameter.',
+    );
+    assertInstanceOf(undefinedError, TypeError);
+    assertIdentical(
+      undefinedError.message,
+      'Matched operation has no ":id" path parameter.',
+    );
+    assertIdentical(explicitResult, explicitValue);
+  });
+
   it("refuses middleware which calls next more than once", async () => {
     // Given API middleware which dispatches its downstream operation twice.
     const api = new SimApi();

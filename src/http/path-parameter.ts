@@ -3,6 +3,10 @@ export function requirePathParameter(
   params: Readonly<Record<string, string>>,
   name: string,
 ): string {
+  if (!Object.hasOwn(params, name)) {
+    throw new TypeError(`Matched operation has no ":${name}" path parameter.`);
+  }
+
   const value = params[name];
 
   if (value === undefined) {
