@@ -165,6 +165,89 @@ describe("sending requests outwards", () => {
     assertArrayLength(receiver.received, 1);
   });
 
+  it("delivers without a flush when the queue is a background one", async () => {
+    // Given a background queue and a receiver that says when it was reached.
+    let arrived: () => void = () => undefined;
+    const reached = new Promise<void>((resolve) => {
+      arrived = resolve;
+    });
+    const receiver = new Receiver();
+    using environment = new SimEnvironment();
+    const site = origin();
+    environment.register(site, {
+      handle: async (request): Promise<Response> => {
+        const response = await receiver.handle(request);
+
+        arrived();
+
+        return response;
+      },
+    });
+    const webhooks = new SimWebhooks({ deliver: "background" });
+
+    // When a delivery is enqueued and nothing flushes it.
+    webhooks.enqueue({ body: "unattended", url: `${site}/hooks` });
+    await reached;
+
+    // Then it went out on its own, and nothing was ever waiting.
+    assertArrayLength(receiver.received, 1);
+    assertArrayEmpty(webhooks.pending);
+  });
+
+  it("waits for the background to go quiet when flushed", async () => {
+    // Given a background queue with three deliveries under way.
+    const receiver = new Receiver();
+    using environment = new SimEnvironment();
+    const site = origin();
+    environment.register(site, receiver);
+    const webhooks = new SimWebhooks({ deliver: "background" });
+    const bodies = ["first", "second", "third"];
+
+    for (const body of bodies) {
+      webhooks.enqueue({ body, url: `${site}/hooks` });
+    }
+
+    // When the queue is flushed.
+    const results = await webhooks.flush();
+
+    // Then every one had landed by the time it answered, in order.
+    assertArrayLength(results, 3);
+    assertObjectEquals(
+      receiver.received.map((one) => one.body),
+      bodies,
+    );
+    assertIdentical(results[0].response?.status, 200);
+  });
+
+  it("waits for work a receiver enqueues in the background", async () => {
+    // Given a background queue whose receiver enqueues one more, which is what
+    // a service reacting to its own hook does.
+    const site = origin();
+    const webhooks = new SimWebhooks({ deliver: "background" });
+    let handled = 0;
+    using environment = new SimEnvironment();
+    environment.register(site, {
+      handle: (): Response => {
+        handled += 1;
+
+        if (handled === 1) {
+          webhooks.enqueue({ body: "second", url: `${site}/hooks` });
+        }
+
+        return new Response(undefined, { status: 200 });
+      },
+    });
+    webhooks.enqueue({ body: "first", url: `${site}/hooks` });
+
+    // When the queue is flushed once.
+    const results = await webhooks.flush();
+
+    // Then the delivery the receiver set off was waited for too, which is what
+    // separates a background queue from a flush.
+    assertArrayLength(results, 2);
+    assertIdentical(handled, 2);
+  });
+
   it("leaves work a receiver enqueues for the next flush", async () => {
     // Given a receiver that enqueues a second delivery while handling the
     // first, which is what a service reacting to its own hook does.

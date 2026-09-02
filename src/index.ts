@@ -31,7 +31,9 @@ export { SimResource, type SimResourceProps } from "./resource.js";
 export { UnclaimedOriginError } from "./unclaimed-origin-error.js";
 export {
   SimWebhooks,
+  type SimWebhooksProps,
   type WebhookDelivery,
   type WebhookDeliveryResult,
+  type WebhookDeliveryTiming,
 } from "./webhooks.js";
 export { UnimplementedRouteError } from "./unimplemented-route-error.js";

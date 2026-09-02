@@ -1,3 +1,21 @@
+/**
+ * When a queue sends what it is given.
+ *
+ * `manual` holds every delivery until `flush` asks for it. The test decides
+ * when the hook goes out, and that is where a reader looks for the moment it
+ * did.
+ *
+ * `background` starts each delivery as it is enqueued, the way a real provider
+ * posts one without being asked. `flush` then waits for the last one to land.
+ */
+export type WebhookDeliveryTiming = "manual" | "background";
+
+/** Configures one outbound queue. */
+export interface SimWebhooksProps {
+  /** When deliveries go out. `manual` when none is given. */
+  readonly deliver?: WebhookDeliveryTiming;
+}
+
 /** One request a simulated service is holding to send. */
 export interface WebhookDelivery {
   readonly body: string;
@@ -49,24 +67,50 @@ export interface WebhookDeliveryResult {
  */
 export class SimWebhooks {
   readonly #queued: WebhookDelivery[] = [];
+  readonly #sending: Promise<WebhookDeliveryResult>[] = [];
+  readonly #background: boolean;
+  /** The delivery each new background one queues up behind. */
+  #last: Promise<unknown> = Promise.resolve();
 
-  /** Holds one request to send when the queue is next flushed. */
-  enqueue(delivery: WebhookDelivery): void {
-    this.#queued.push(delivery);
+  constructor(props: SimWebhooksProps = {}) {
+    this.#background = props.deliver === "background";
   }
 
-  /** What is waiting to go, in the order it was enqueued. */
+  /**
+   * Holds one request, or starts it, depending on when this queue delivers.
+   *
+   * A background delivery goes out behind the one before it. Deliveries are in
+   * order in both timings, and the timing decides when rather than what.
+   */
+  enqueue(delivery: WebhookDelivery): void {
+    if (!this.#background) {
+      this.#queued.push(delivery);
+
+      return;
+    }
+
+    const sending = this.#last.then(() => send(delivery));
+
+    this.#last = sending;
+    this.#sending.push(sending);
+  }
+
+  /**
+   * What is waiting for the next flush, in the order it was enqueued.
+   *
+   * Always empty on a background queue, where nothing waits.
+   */
   get pending(): readonly WebhookDelivery[] {
     return [...this.#queued];
   }
 
   /**
-   * Sends everything waiting, in order, and answers with what each endpoint
-   * did.
+   * Answers once everything enqueued so far has been delivered, with what each
+   * endpoint did.
    *
-   * The queue is emptied before the first request goes out, so a receiver that
-   * enqueues more work leaves it for the next flush in place of extending this
-   * one.
+   * On the default queue this is what sends them. On a background queue they
+   * are already going, and this waits for the last one to land, the way
+   * Yulin's `backgroundTasksComplete()` does for a simulated AWS account.
    *
    * A result carries a `response` or an `error`, and the two mean different
    * things. An endpoint that answered, including one answering 400 or 500, is
@@ -75,6 +119,18 @@ export class SimWebhooks {
    * claims. A simulation exists to reproduce both, so neither throws.
    */
   async flush(): Promise<WebhookDeliveryResult[]> {
+    return this.#background ? this.#settled() : this.#sendQueued();
+  }
+
+  /**
+   * Sends what is waiting.
+   *
+   * The queue is emptied before the first request goes out, so a receiver that
+   * enqueues more work leaves it for the next flush in place of extending this
+   * one. Holding a queue is for deciding when deliveries go, and a flush that
+   * chased its own tail would take that decision back.
+   */
+  async #sendQueued(): Promise<WebhookDeliveryResult[]> {
     const sending = this.#queued.splice(0);
     const results: WebhookDeliveryResult[] = [];
 
@@ -86,6 +142,25 @@ export class SimWebhooks {
     for (const delivery of sending) {
       // oxlint-disable-next-line no-await-in-loop -- see above
       results.push(await send(delivery));
+    }
+
+    return results;
+  }
+
+  /**
+   * Waits for the background to go quiet.
+   *
+   * A delivery a receiver enqueues while this is waiting has already started,
+   * so it is waited for too. That is the difference from a flush, and it is
+   * the point of a background queue: the test asks once, and everything the
+   * hooks set off has finished by the time it answers.
+   */
+  async #settled(): Promise<WebhookDeliveryResult[]> {
+    const results: WebhookDeliveryResult[] = [];
+
+    while (this.#sending.length > 0) {
+      // oxlint-disable-next-line no-await-in-loop -- each round may add more
+      results.push(...(await Promise.all(this.#sending.splice(0))));
     }
 
     return results;
