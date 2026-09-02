@@ -1,9 +1,4 @@
-export {
-  SimApi,
-  type RawHttpOperationHandler,
-  type SimApiProps,
-  type SimApiResourceProps,
-} from "./api.js";
+export { SimApi, type SimApiProps, type SimApiResourceProps } from "./api.js";
 export {
   SimEnvironment,
   type SimEnvironmentProps,
@@ -21,6 +16,8 @@ export {
   type SemanticOperationOverride,
 } from "./http/operation.js";
 export { decodeForm } from "./http/decode-form.js";
+export { type ErrorFormatter } from "./http/error-formatter.js";
+export { type RawHttpOperationHandler } from "./http/raw-operation.js";
 export { decodeJson, type RequestDecoder } from "./http/request-decoder.js";
 export { RestResource } from "./rest-resource.js";
 export {

@@ -1,13 +1,12 @@
-import {
-  createRawHttpOperation,
-  type HttpMiddleware,
-  type HttpOperationContext,
-  operationMiddleware,
-  type RawHttpOperation,
-} from "./http/operation.js";
+import type { HttpMiddleware, RawHttpOperation } from "./http/operation.js";
+import type { ErrorFormatter } from "./http/error-formatter.js";
 import { OperationRouter } from "./http/operation-router.js";
+import {
+  rawOperation,
+  type RawHttpOperationHandler,
+} from "./http/raw-operation.js";
 import type { RequestDecoder } from "./http/request-decoder.js";
-import { compileRoute, normalizeMethod } from "./http/route.js";
+import { validateResourcePath } from "./http/resource-path.js";
 import { attachRestResource, RestResource } from "./rest-resource.js";
 import type { RestResourceProps } from "./rest-resource-operation.js";
 import { SimResource, type SimResourceProps } from "./resource.js";
@@ -21,25 +20,29 @@ export interface SimApiProps {
    * the closest one wins.
    */
   decode?: RequestDecoder;
+
+  /**
+   * How a thrown error becomes a response.
+   *
+   * Runs before the supplied `EntityNotFoundError` and `DuplicateEntityError`
+   * mappings, and declining an error with `undefined` leaves it to them.
+   */
+  formatError?: ErrorFormatter;
 }
 
 /** Configures conventional resource state and its HTTP operations. */
 export interface SimApiResourceProps<T extends object>
   extends SimResourceProps<T>, RestResourceProps {}
 
-/** Handles a raw HTTP operation after Simnaril has matched its route. */
-export type RawHttpOperationHandler = (
-  context: HttpOperationContext,
-) => Promise<Response> | Response;
-
 /** Routes HTTP requests to stateful simulated resources. */
 export class SimApi {
   readonly #paths = new Set<string>();
-  readonly #router = new OperationRouter();
+  readonly #router: OperationRouter;
   readonly #decode: RequestDecoder | undefined;
 
   constructor(props: SimApiProps = {}) {
     this.#decode = props.decode;
+    this.#router = new OperationRouter(props.formatError);
   }
 
   /** Adds middleware around every matched operation in this API. */
@@ -64,7 +67,7 @@ export class SimApi {
     state: SimResource<T>,
     props: RestResourceProps,
   ): RestResource<T> {
-    this.#validateResourcePath(props.path);
+    validateResourcePath(props.path);
 
     if (this.#paths.has(props.path)) {
       throw new TypeError(
@@ -86,20 +89,10 @@ export class SimApi {
     path: string,
     handle: RawHttpOperationHandler,
   ): RawHttpOperation {
-    const route = compileRoute(path);
-    const operation = createRawHttpOperation();
+    const built = rawOperation(method, path, handle);
 
-    this.#router.register({
-      ...route,
-      decode: () => Promise.resolve(),
-      encode: (output) => output as Response,
-      method: normalizeMethod(method),
-      middleware: operationMiddleware(operation),
-      operate: (_input, context) => handle(context),
-      resourceMiddleware: [],
-      transform: (decoded) => decoded,
-    });
-    return operation;
+    this.#router.register(built.http);
+    return built.operation;
   }
 
   /** Handles one request through the matching simulated HTTP operation. */
@@ -114,22 +107,5 @@ export class SimApi {
     }
 
     return { ...props, decode: this.#decode };
-  }
-
-  #validateResourcePath(path: string): void {
-    const base = new URL("https://simnaril.invalid");
-    const url = new URL(path, base);
-
-    if (
-      url.origin !== base.origin ||
-      url.pathname !== path ||
-      url.search !== "" ||
-      url.hash !== "" ||
-      !/^\/[^/:]+(?:\/[^/:]+)*$/u.test(path)
-    ) {
-      throw new TypeError(
-        `Expected a resource collection path such as "/widgets", received "${path}".`,
-      );
-    }
   }
 }

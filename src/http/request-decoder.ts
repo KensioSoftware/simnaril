@@ -25,3 +25,11 @@ export const decodeWhenPresent =
   (decode: RequestDecoder): RequestDecoder =>
   (request) =>
     request.body === null ? undefined : decode(request);
+
+/**
+ * Reads nothing at all.
+ *
+ * What an operation with no body to read uses. Internal, and kept beside the
+ * default so the two live together.
+ */
+export const decodeNothing = (): undefined => undefined;
