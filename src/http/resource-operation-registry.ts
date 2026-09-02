@@ -9,6 +9,7 @@ import type {
   HttpOperation,
   SemanticOperation,
 } from "./operation.js";
+import { decodeJson, type RequestDecoder } from "./request-decoder.js";
 import { resourceOperation } from "./resource-operation.js";
 import { restResourceOperations } from "./rest-resource-operations.js";
 
@@ -25,18 +26,13 @@ export class ResourceOperationRegistry<T extends object> {
     "delete",
   ]);
   readonly #resource: RestResource<T>;
+  readonly #decode: RequestDecoder | undefined;
   #registerOperation: ((operation: HttpOperation) => void) | undefined;
 
-  constructor(
-    resource: RestResource<T>,
-    configuration: RestResourceProps["operations"],
-  ) {
+  constructor(resource: RestResource<T>, props: RestResourceProps) {
     this.#resource = resource;
-    const supplied = restResourceOperations(
-      resource,
-      configuration,
-      this.#middleware,
-    );
+    this.#decode = props.decode;
+    const supplied = restResourceOperations(resource, props, this.#middleware);
     this.#httpOperations = supplied.http;
     this.operations = supplied.semantic;
   }
@@ -65,6 +61,7 @@ export class ResourceOperationRegistry<T extends object> {
       this.#resource,
       this.#middleware,
       props,
+      props.decode ?? this.#decode ?? decodeJson,
     );
     this.#names.add(name);
     this.#httpOperations.push(operation.http);

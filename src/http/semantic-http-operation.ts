@@ -6,11 +6,12 @@ import {
   runSemanticOperation,
   type SemanticOperation,
 } from "./operation.js";
+import type { RequestDecoder } from "./request-decoder.js";
 import type { CompiledRoute } from "./route.js";
 import { normalizeMethod } from "./route.js";
 
 interface SemanticHttpOperationProps<T extends object, TInput, TOutput> {
-  decode: (request: Request) => Promise<unknown>;
+  decode: RequestDecoder;
   encode: (output: unknown) => Promise<Response> | Response;
   method: string;
   resource: RestResource<T>;

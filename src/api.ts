@@ -6,10 +6,22 @@ import {
   type RawHttpOperation,
 } from "./http/operation.js";
 import { OperationRouter } from "./http/operation-router.js";
+import type { RequestDecoder } from "./http/request-decoder.js";
 import { compileRoute, normalizeMethod } from "./http/route.js";
 import { attachRestResource, RestResource } from "./rest-resource.js";
 import type { RestResourceProps } from "./rest-resource-operation.js";
 import { SimResource, type SimResourceProps } from "./resource.js";
+
+/** Configures behaviour shared by every resource on one simulated API. */
+export interface SimApiProps {
+  /**
+   * How request bodies are read, for the resources that read one.
+   *
+   * JSON when none is given. A resource or an operation can name its own, and
+   * the closest one wins.
+   */
+  decode?: RequestDecoder;
+}
 
 /** Configures conventional resource state and its HTTP operations. */
 export interface SimApiResourceProps<T extends object>
@@ -24,6 +36,11 @@ export type RawHttpOperationHandler = (
 export class SimApi {
   readonly #paths = new Set<string>();
   readonly #router = new OperationRouter();
+  readonly #decode: RequestDecoder | undefined;
+
+  constructor(props: SimApiProps = {}) {
+    this.#decode = props.decode;
+  }
 
   /** Adds middleware around every matched operation in this API. */
   use(middleware: HttpMiddleware): this {
@@ -33,9 +50,12 @@ export class SimApi {
 
   /** Creates resource state and exposes its conventional HTTP operations. */
   resource<T extends object>(props: SimApiResourceProps<T>): RestResource<T> {
-    const { operations, path, ...stateProps } = props;
-    const restProps: RestResourceProps =
-      operations === undefined ? { path } : { operations, path };
+    const { decode, operations, path, ...stateProps } = props;
+    const restProps: RestResourceProps = {
+      path,
+      ...(decode === undefined ? {} : { decode }),
+      ...(operations === undefined ? {} : { operations }),
+    };
     return this.expose(new SimResource<T>(stateProps), restProps);
   }
 
@@ -52,7 +72,7 @@ export class SimApi {
       );
     }
 
-    const resource = new RestResource(state, props);
+    const resource = new RestResource(state, this.#withApiDecode(props));
     attachRestResource(resource, (operation) => {
       this.#router.register(operation);
     });
@@ -85,6 +105,15 @@ export class SimApi {
   /** Handles one request through the matching simulated HTTP operation. */
   handle(request: Request): Promise<Response> {
     return this.#router.handle(request);
+  }
+
+  /** Applies the API's decoder to a resource that has not named its own. */
+  #withApiDecode(props: RestResourceProps): RestResourceProps {
+    if (props.decode !== undefined || this.#decode === undefined) {
+      return props;
+    }
+
+    return { ...props, decode: this.#decode };
   }
 
   #validateResourcePath(path: string): void {

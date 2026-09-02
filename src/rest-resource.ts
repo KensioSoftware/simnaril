@@ -19,10 +19,7 @@ export class RestResource<T extends object> {
   constructor(state: SimResource<T>, props: RestResourceProps) {
     this.state = state;
     this.path = props.path;
-    this.#operationRegistry = new ResourceOperationRegistry(
-      this,
-      props.operations,
-    );
+    this.#operationRegistry = new ResourceOperationRegistry(this, props);
     this.operations = this.#operationRegistry.operations;
   }
 

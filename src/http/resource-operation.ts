@@ -5,11 +5,9 @@ import {
   type HttpOperation,
   SemanticOperation,
 } from "./operation.js";
+import { decodeWhenPresent, type RequestDecoder } from "./request-decoder.js";
 import { compileRoute } from "./route.js";
 import { semanticHttpOperation } from "./semantic-http-operation.js";
-
-const decodeResourceOperation = async (request: Request): Promise<unknown> =>
-  request.body === null ? undefined : request.json();
 
 const encodeResourceOperation = (output: unknown): Response =>
   output === undefined
@@ -21,6 +19,7 @@ export function resourceOperation<T extends object, TInput, TOutput>(
   resource: RestResource<T>,
   middleware: readonly HttpMiddleware[],
   props: ResourceOperationProps<T, TInput, TOutput>,
+  decode: RequestDecoder,
 ): {
   http: HttpOperation;
   semantic: SemanticOperation<TInput, TOutput, RestResource<T>>;
@@ -31,7 +30,7 @@ export function resourceOperation<T extends object, TInput, TOutput>(
   return {
     semantic,
     http: semanticHttpOperation({
-      decode: decodeResourceOperation,
+      decode: decodeWhenPresent(decode),
       encode: encodeResourceOperation,
       method: props.method,
       resource,

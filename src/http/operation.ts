@@ -1,3 +1,4 @@
+import type { RequestDecoder } from "./request-decoder.js";
 import type { CompiledRoute, RouteMatch } from "./route.js";
 
 /** HTTP data shared by handlers and middleware for one matched operation. */
@@ -30,7 +31,7 @@ export interface SemanticOperationOverride<TInput, TOutput, TResource> {
 }
 
 export interface HttpOperation extends CompiledRoute {
-  decode: (request: Request) => Promise<unknown>;
+  decode: RequestDecoder;
   encode: (output: unknown) => Promise<Response> | Response;
   method: string;
   middleware: readonly HttpMiddleware[];

@@ -6,6 +6,9 @@ reviews:
   auto_review:
     # Review a pull request once, when it is opened.
     enabled: true
+    # Documentation-only pull requests do not need a CodeRabbit review.
+    ignore_title_keywords:
+      - "docs:"
     # Do not review again on every push after that. Ask for another review with
     # an `@coderabbitai review` comment on the pull request.
     auto_incremental_review: false
