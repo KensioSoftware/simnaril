@@ -20,6 +20,7 @@ export {
   type SemanticOperationContext,
   type SemanticOperationOverride,
 } from "./http/operation.js";
+export { decodeForm } from "./http/decode-form.js";
 export { decodeJson, type RequestDecoder } from "./http/request-decoder.js";
 export { RestResource } from "./rest-resource.js";
 export {
