@@ -65,7 +65,7 @@ export class SimApi {
   /** Creates resource state and exposes its conventional HTTP operations. */
   resource<T extends object, TCreate = Partial<T>>(
     props: SimApiResourceProps<T, TCreate>,
-  ): RestResource<T> {
+  ): RestResource<T, TCreate> {
     const { decode, itemPath, locate, operations, path, ...stateProps } = props;
     const restProps: RestResourceProps = {
       path,
@@ -74,17 +74,14 @@ export class SimApi {
       ...(locate === undefined ? {} : { locate }),
       ...(operations === undefined ? {} : { operations }),
     };
-    return this.expose(
-      new SimResource<T>(stateProps as SimResourceProps<T>),
-      restProps,
-    );
+    return this.expose(new SimResource<T, TCreate>(stateProps), restProps);
   }
 
   /** Exposes existing resource state through conventional HTTP operations. */
-  expose<T extends object>(
-    state: SimResource<T>,
+  expose<T extends object, TCreate = Partial<T>>(
+    state: SimResource<T, TCreate>,
     props: RestResourceProps,
-  ): RestResource<T> {
+  ): RestResource<T, TCreate> {
     validateResourcePath(props.path);
     const pathShape = resourcePathShape(props.path);
 

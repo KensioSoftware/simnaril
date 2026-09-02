@@ -15,14 +15,14 @@ const encodeResourceOperation = (output: unknown): Response =>
     : Response.json(output);
 
 /** Builds one named semantic operation below a resource path. */
-export function resourceOperation<T extends object, TInput, TOutput>(
-  resource: RestResource<T>,
+export function resourceOperation<T extends object, TCreate, TInput, TOutput>(
+  resource: RestResource<T, TCreate>,
   middleware: readonly HttpMiddleware[],
-  props: ResourceOperationProps<T, TInput, TOutput>,
+  props: ResourceOperationProps<T, TInput, TOutput, TCreate>,
   decode: RequestDecoder,
 ): {
   http: HttpOperation;
-  semantic: SemanticOperation<TInput, TOutput, RestResource<T>>;
+  semantic: SemanticOperation<TInput, TOutput, RestResource<T, TCreate>>;
 } {
   const route = compileRoute(`${resource.path}${props.path}`);
   const semantic = new SemanticOperation(props.handle);

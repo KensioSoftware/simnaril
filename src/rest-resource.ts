@@ -12,14 +12,14 @@ import { requirePathParameter } from "./http/path-parameter.js";
 const attachResource = Symbol("attach REST resource");
 
 /** Adds conventional HTTP exposure to simulated resource state. */
-export class RestResource<T extends object> {
-  readonly operations: RestResourceOperations<T>;
+export class RestResource<T extends object, TCreate = Partial<T>> {
+  readonly operations: RestResourceOperations<T, TCreate>;
   readonly path: string;
-  readonly state: SimResource<T>;
+  readonly state: SimResource<T, TCreate>;
   readonly #locate: ResourceLocator;
-  readonly #operationRegistry: ResourceOperationRegistry<T>;
+  readonly #operationRegistry: ResourceOperationRegistry<T, TCreate>;
 
-  constructor(state: SimResource<T>, props: RestResourceProps) {
+  constructor(state: SimResource<T, TCreate>, props: RestResourceProps) {
     this.state = state;
     this.path = props.path;
     this.#locate =
@@ -42,13 +42,15 @@ export class RestResource<T extends object> {
   /** Adds a named domain action under this resource's collection path. */
   operation<TInput = unknown, TOutput = unknown>(
     name: string,
-    props: ResourceOperationProps<T, TInput, TOutput>,
-  ): SemanticOperation<TInput, TOutput, RestResource<T>> {
+    props: ResourceOperationProps<T, TInput, TOutput, TCreate>,
+  ): SemanticOperation<TInput, TOutput, RestResource<T, TCreate>> {
     return this.#operationRegistry.add(name, props);
   }
 
   [attachResource](
-    registerOperation: Parameters<ResourceOperationRegistry<T>["attach"]>[0],
+    registerOperation: Parameters<
+      ResourceOperationRegistry<T, TCreate>["attach"]
+    >[0],
   ): void {
     this.#operationRegistry.attach(registerOperation);
   }
@@ -59,7 +61,7 @@ export class RestResource<T extends object> {
   }
 
   /** Runs the resource's creation behaviour and stores its result. */
-  create(input: Partial<T>): T {
+  create(input: TCreate): T {
     return this.state.create(input);
   }
 
@@ -94,9 +96,11 @@ export class RestResource<T extends object> {
   }
 }
 
-export function attachRestResource<T extends object>(
-  resource: RestResource<T>,
-  registerOperation: Parameters<ResourceOperationRegistry<T>["attach"]>[0],
+export function attachRestResource<T extends object, TCreate>(
+  resource: RestResource<T, TCreate>,
+  registerOperation: Parameters<
+    ResourceOperationRegistry<T, TCreate>["attach"]
+  >[0],
 ): void {
   resource[attachResource](registerOperation);
 }

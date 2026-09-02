@@ -5,7 +5,7 @@ import {
   assertObjectEquals,
   assertResponseStatus,
 } from "@kensio/smartass";
-import { describe, it } from "vitest";
+import { describe, expectTypeOf, it } from "vitest";
 
 import {
   decodeForm,
@@ -72,6 +72,12 @@ describe("a simulation composed of every piece", () => {
         status: "open",
       }),
     });
+    expectTypeOf<(input: Created) => Session>().toEqualTypeOf<
+      typeof sessions.create
+    >();
+    expectTypeOf<(input: Created) => Session>().toEqualTypeOf<
+      typeof sessions.state.create
+    >();
 
     return {
       api,

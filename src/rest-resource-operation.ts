@@ -50,19 +50,27 @@ export type RestResourceOperationName =
   | "delete";
 
 /** Supplied semantic operations for one REST resource. */
-export interface RestResourceOperations<T extends object> {
-  create: SemanticOperation<Partial<T>, T, RestResource<T>>;
-  delete: SemanticOperation<unknown, T, RestResource<T>>;
-  get: SemanticOperation<unknown, T, RestResource<T>>;
-  list: SemanticOperation<unknown, T[], RestResource<T>>;
-  update: SemanticOperation<Partial<T>, T, RestResource<T>>;
+export interface RestResourceOperations<
+  T extends object,
+  TCreate = Partial<T>,
+> {
+  create: SemanticOperation<TCreate, T, RestResource<T, TCreate>>;
+  delete: SemanticOperation<unknown, T, RestResource<T, TCreate>>;
+  get: SemanticOperation<unknown, T, RestResource<T, TCreate>>;
+  list: SemanticOperation<unknown, T[], RestResource<T, TCreate>>;
+  update: SemanticOperation<Partial<T>, T, RestResource<T, TCreate>>;
 }
 
 /** Configures a domain action under a resource path. */
-export interface ResourceOperationProps<T extends object, TInput, TOutput> {
+export interface ResourceOperationProps<
+  T extends object,
+  TInput,
+  TOutput,
+  TCreate = Partial<T>,
+> {
   decode?: RequestDecoder;
   handle: (
-    context: SemanticOperationContext<TInput, RestResource<T>>,
+    context: SemanticOperationContext<TInput, RestResource<T, TCreate>>,
   ) => Promise<TOutput> | TOutput;
   method: string;
   path: string;

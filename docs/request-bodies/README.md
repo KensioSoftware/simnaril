@@ -78,7 +78,7 @@ const sessions = api.resource<CheckoutSession, CreateCheckoutSession>({
 ```
 
 The second type argument defaults to `Partial<CheckoutSession>`. It describes the input to the
-resource's `create` function.
+resource's `create` function, its direct `create()` method and the supplied create operation.
 
 The supplied update operation keeps `Partial<T>` as its input type. Its default behaviour merges
 the decoded object into the stored entity. The decoded fields therefore have to match the entity.
