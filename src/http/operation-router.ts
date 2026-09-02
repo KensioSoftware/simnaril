@@ -12,11 +12,13 @@ import type { RouteMatch } from "./route.js";
 
 /** Selects and runs registered operations for one simulated API. */
 export class OperationRouter {
+  readonly #apiName: string;
   readonly #middleware: HttpMiddleware[] = [];
   readonly #operations: HttpOperation[] = [];
   readonly #formatError: ErrorFormatter | undefined;
 
-  constructor(formatError?: ErrorFormatter) {
+  constructor(apiName: string, formatError?: ErrorFormatter) {
+    this.#apiName = apiName;
     this.#formatError = formatError;
   }
 
@@ -50,7 +52,7 @@ export class OperationRouter {
     }
 
     if (selected === undefined) {
-      throw new UnimplementedRouteError(request);
+      throw new UnimplementedRouteError(request, this.#apiName);
     }
 
     return this.#run(selected.operation, request, selected.match);

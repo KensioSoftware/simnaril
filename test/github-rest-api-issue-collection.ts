@@ -1,5 +1,4 @@
-import type { RestResource } from "../src/index.js";
-import { pathParameter } from "./github-rest-api-issue-identity.js";
+import { requirePathParameter, type RestResource } from "../src/index.js";
 import { paginate } from "./github-rest-api-middleware.js";
 import type { GitHubIssue } from "./github-rest-api-types.js";
 
@@ -24,7 +23,7 @@ export const configureIssueCollection = (
 ): void => {
   issues.operations.list.override({
     handle({ params, resource }) {
-      const repositoryUrl = `${githubOrigin}/repos/${pathParameter(params, "owner")}/${pathParameter(params, "repository")}`;
+      const repositoryUrl = `${githubOrigin}/repos/${requirePathParameter(params, "owner")}/${requirePathParameter(params, "repository")}`;
       return resource
         .list()
         .filter((issue) => issue.repository_url === repositoryUrl);
@@ -35,8 +34,8 @@ export const configureIssueCollection = (
   let nextIssueId = 1_000_000;
   issues.operations.create.override({
     handle({ input, params, resource }) {
-      const owner = pathParameter(params, "owner");
-      const repository = pathParameter(params, "repository");
+      const owner = requirePathParameter(params, "owner");
+      const repository = requirePathParameter(params, "repository");
       const repositoryUrl = `${githubOrigin}/repos/${owner}/${repository}`;
       const number = nextIssueNumber(resource.list(), repositoryUrl);
       const issue: GitHubIssue = {

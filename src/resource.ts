@@ -27,7 +27,7 @@ export class SimResource<T extends object> {
   readonly #entities = new Map<string, T>();
   readonly #identify: (entity: T) => string;
 
-  constructor(props: SimResourceProps<T>) {
+  constructor(props: SimResourceProps<T> = {}) {
     this.name = props.name;
     this.#createEntity = props.create ?? ((input): T => input as T);
     this.#identify = props.identify ?? identifyById;

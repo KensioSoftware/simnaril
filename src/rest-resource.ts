@@ -2,10 +2,12 @@ import type { HttpMiddleware, SemanticOperation } from "./http/operation.js";
 import { ResourceOperationRegistry } from "./http/resource-operation-registry.js";
 import type { SimResource } from "./resource.js";
 import type {
+  ResourceLocator,
   ResourceOperationProps,
   RestResourceOperations,
   RestResourceProps,
 } from "./rest-resource-operation.js";
+import { requirePathParameter } from "./http/path-parameter.js";
 
 const attachResource = Symbol("attach REST resource");
 
@@ -14,13 +16,21 @@ export class RestResource<T extends object> {
   readonly operations: RestResourceOperations<T>;
   readonly path: string;
   readonly state: SimResource<T>;
+  readonly #locate: ResourceLocator;
   readonly #operationRegistry: ResourceOperationRegistry<T>;
 
   constructor(state: SimResource<T>, props: RestResourceProps) {
     this.state = state;
     this.path = props.path;
+    this.#locate =
+      props.locate ?? ((params): string => requirePathParameter(params, "id"));
     this.#operationRegistry = new ResourceOperationRegistry(this, props);
     this.operations = this.#operationRegistry.operations;
+  }
+
+  /** Returns the state identity named by matched route parameters. */
+  locate(params: Readonly<Record<string, string>>): string {
+    return this.#locate(params);
   }
 
   /** Adds middleware around every operation owned by this resource. */

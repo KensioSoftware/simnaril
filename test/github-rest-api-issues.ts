@@ -1,6 +1,13 @@
-import type { RestResource, SimApi } from "../src/index.js";
+import {
+  requirePathParameter,
+  type RestResource,
+  type SimApi,
+} from "../src/index.js";
 import { configureIssueCollection } from "./github-rest-api-issue-collection.js";
-import { identityForIssue } from "./github-rest-api-issue-identity.js";
+import {
+  identityForIssue,
+  issueIdentity,
+} from "./github-rest-api-issue-identity.js";
 import { configureIssueItem } from "./github-rest-api-issue-item.js";
 import type { GitHubIssue } from "./github-rest-api-types.js";
 
@@ -10,15 +17,18 @@ export const createGitHubIssues = (
 ): RestResource<GitHubIssue> => {
   const issues = api.resource<GitHubIssue>({
     identify: identityForIssue,
+    itemPath: "/:number",
+    locate: (params) =>
+      issueIdentity(
+        requirePathParameter(params, "owner"),
+        requirePathParameter(params, "repository"),
+        Number(requirePathParameter(params, "number")),
+      ),
     name: "issue",
     operations: {
-      create: { path: "/:owner/:repository/issues" },
-      delete: { path: "/:owner/:repository/issues/:id" },
-      get: { path: "/:owner/:repository/issues/:id" },
-      list: { path: "/:owner/:repository/issues" },
-      update: { path: "/:owner/:repository/issues/:id" },
+      delete: false,
     },
-    path: "/repos",
+    path: "/repos/:owner/:repository/issues",
   });
   configureIssueCollection(issues, githubOrigin);
   configureIssueItem(issues);

@@ -36,16 +36,13 @@ Use `resource.operation()` for an action that belongs to a resource, such as
 archiving a widget:
 
 ```ts
+import { requirePathParameter } from "@kensio/simnaril";
+
 const archive = widgets.operation<{ reason: string }, Widget>("archive", {
   method: "POST",
   path: "/:id/archive",
   handle({ input, params, resource }) {
-    const id = params["id"];
-
-    if (id === undefined) {
-      throw new TypeError("The archive route requires an id.");
-    }
-
+    const id = requirePathParameter(params, "id");
     console.log(input.reason);
     return resource.update(id, { status: "archived" });
   },

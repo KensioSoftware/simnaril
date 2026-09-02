@@ -2,9 +2,12 @@ import { faker } from "@faker-js/faker";
 import {
   assertArrayEmpty,
   assertArrayLength,
+  assertFalse,
   assertIdentical,
   assertInstanceOf,
   assertObjectEquals,
+  assertResponseStatus,
+  assertTrue,
   assertUndefined,
 } from "@kensio/smartass";
 import { describe, it } from "vitest";
@@ -125,7 +128,8 @@ describe("sending requests outwards", () => {
     const [result] = await webhooks.flush();
 
     // Then the delivery arrived, and the response says what happened to it.
-    assertIdentical(result?.response?.status, 400);
+    assertTrue(result?.delivered);
+    assertResponseStatus(result.response, 400);
     assertUndefined(result.error);
   });
 
@@ -141,8 +145,9 @@ describe("sending requests outwards", () => {
     const [result] = await webhooks.flush();
 
     // Then it comes back as a failure naming the unclaimed origin.
-    assertUndefined(result?.response);
-    assertInstanceOf(result?.error, TypeError);
+    assertFalse(result?.delivered);
+    assertUndefined(result.response);
+    assertInstanceOf(result.error, TypeError);
     assertInstanceOf(result.error.cause, UnclaimedOriginError);
   });
 

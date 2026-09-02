@@ -1,18 +1,5 @@
 import type { GitHubIssue } from "./github-rest-api-types.js";
 
-export const pathParameter = (
-  params: Readonly<Record<string, string>>,
-  name: string,
-): string => {
-  const value = params[name];
-
-  if (value === undefined) {
-    throw new TypeError(`GitHub route has no ":${name}" path parameter.`);
-  }
-
-  return value;
-};
-
 export const issueIdentity = (
   owner: string,
   repository: string,
