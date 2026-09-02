@@ -1,6 +1,7 @@
 import { DuplicateEntityError } from "../duplicate-entity-error.js";
 import { EntityNotFoundError } from "../entity-not-found-error.js";
 import { UnimplementedRouteError } from "../unimplemented-route-error.js";
+import type { ErrorFormatter } from "./error-formatter.js";
 import type {
   HttpMiddleware,
   HttpOperation,
@@ -13,6 +14,11 @@ import type { RouteMatch } from "./route.js";
 export class OperationRouter {
   readonly #middleware: HttpMiddleware[] = [];
   readonly #operations: HttpOperation[] = [];
+  readonly #formatError: ErrorFormatter | undefined;
+
+  constructor(formatError?: ErrorFormatter) {
+    this.#formatError = formatError;
+  }
 
   use(middleware: HttpMiddleware): void {
     this.#middleware.push(middleware);
@@ -80,6 +86,17 @@ export class OperationRouter {
     try {
       return await action();
     } catch (error) {
+      /*
+       * The API's own formatter goes first, so a service that shapes its errors
+       * shapes these two as well. Declining one leaves it to the mappings
+       * below.
+       */
+      const formatted = this.#formatError?.(error);
+
+      if (formatted !== undefined) {
+        return formatted;
+      }
+
       if (error instanceof EntityNotFoundError) {
         return Response.json({ error: error.message }, { status: 404 });
       }

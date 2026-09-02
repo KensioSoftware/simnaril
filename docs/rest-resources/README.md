@@ -101,6 +101,38 @@ unfinished simulation visible during development.
 Node's `fetch()` wraps an `UnimplementedRouteError` in a `TypeError`. The
 original error is available as `error.cause`.
 
+## Shape the errors one API answers with
+
+A real service has one error envelope across every endpoint. Stripe's is
+`{ error: { type, code, message, param } }` and GitHub's is
+`{ message, documentation_url }`. Describe the shape once, on the API.
+
+```ts
+import { EntityNotFoundError, SimApi } from "@kensio/simnaril";
+
+const api = new SimApi({
+  formatError: (error) => {
+    if (error instanceof EntityNotFoundError) {
+      return Response.json(
+        { error: { message: error.message, type: "invalid_request_error" } },
+        { status: 404 },
+      );
+    }
+
+    return undefined;
+  },
+});
+```
+
+The formatter runs before the two supplied mappings, so it shapes
+`EntityNotFoundError` and `DuplicateEntityError` as well as anything the
+simulation raises on its own behalf. Return `undefined` to decline an error and
+leave it to them.
+
+An error nothing shapes still escapes as a thrown error, the way it does today.
+A simulation that has not been taught about a failure says so, in place of
+answering `500` and hiding it.
+
 ## Move a supplied route
 
 Configure the method, resource-relative path, or both under `operations`:

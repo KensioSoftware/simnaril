@@ -12,13 +12,12 @@ import {
 } from "./operation.js";
 import {
   decodeJson,
+  decodeNothing,
   decodeWhenPresent,
   type RequestDecoder,
 } from "./request-decoder.js";
 import { compileRoute } from "./route.js";
 import { semanticHttpOperation } from "./semantic-http-operation.js";
-
-const decodeEmpty = (): undefined => undefined;
 
 const encodeJson =
   (status: number) =>
@@ -50,7 +49,7 @@ const bodyDecoder = (
  */
 const emptyDecoder = (
   configuration: RestResourceOperationConfiguration | undefined,
-): RequestDecoder => decodeWhenPresent(configuration?.decode ?? decodeEmpty);
+): RequestDecoder => decodeWhenPresent(configuration?.decode ?? decodeNothing);
 
 const requiredPathParameter = (
   params: Readonly<Record<string, string>>,
