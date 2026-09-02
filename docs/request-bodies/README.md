@@ -77,14 +77,19 @@ and simulating one is the case this exists for.
 `list`, `get` and `delete` are sent no body, and they inherit no decoder from the resource or the
 API. There would be nothing there for it to read.
 
-| Operation               | Decoder                                                                       |
-| ----------------------- | ----------------------------------------------------------------------------- |
-| `create`, `update`      | its own, then the resource's, then the API's, then JSON                       |
-| `list`, `get`, `delete` | its own, and otherwise none                                                   |
-| a resource operation    | its own, then the resource's, then the API's, then JSON (when a body arrives) |
+| Operation               | Decoder                                                 | Runs                |
+| ----------------------- | ------------------------------------------------------- | ------------------- |
+| `create`, `update`      | its own, then the resource's, then the API's, then JSON | always              |
+| `list`, `get`, `delete` | its own, and otherwise none                             | when a body arrives |
+| a resource operation    | its own, then the resource's, then the API's, then JSON | when a body arrives |
 
 Configuring `decode` on `get` or `delete` is honoured, for the services that do send a body with
-one.
+one. It runs only when a body actually arrived, and the handler is given `undefined` otherwise. An
+ordinary bodyless `DELETE` to an operation configured with `decodeJson` would answer
+`Unexpected end of JSON input` without that.
 
-A resource operation (`widgets.operation(...)`) is a domain action, so it may be called with a body
-or without one. It decodes when a body arrives and hands the handler `undefined` when none does.
+A resource operation (`widgets.operation(...)`) is a domain action. It may be called with a body or
+without one, so it decodes on the same terms.
+
+`create` and `update` are different. A `POST` with no body is a malformed create, and its decoder
+runs and fails, which is the loud behaviour a malformed JSON body has always had.

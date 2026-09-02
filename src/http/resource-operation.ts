@@ -5,21 +5,9 @@ import {
   type HttpOperation,
   SemanticOperation,
 } from "./operation.js";
-import type { RequestDecoder } from "./request-decoder.js";
+import { decodeWhenPresent, type RequestDecoder } from "./request-decoder.js";
 import { compileRoute } from "./route.js";
 import { semanticHttpOperation } from "./semantic-http-operation.js";
-
-/**
- * Reads the body when one arrives.
- *
- * A resource operation is a domain action, and it may be called with a body or
- * without one. Deciding by what arrived keeps `POST /widgets/:id/archive`
- * working either way.
- */
-const decodeWhenPresent =
-  (decode: RequestDecoder): RequestDecoder =>
-  (request) =>
-    request.body === null ? undefined : decode(request);
 
 const encodeResourceOperation = (output: unknown): Response =>
   output === undefined

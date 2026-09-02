@@ -7,7 +7,7 @@ import {
 } from "@kensio/smartass";
 import { describe, it } from "vitest";
 
-import { SimApi, type RequestDecoder } from "../index.js";
+import { decodeJson, SimApi, type RequestDecoder } from "../index.js";
 
 describe("reading a request body", () => {
   interface Widget {
@@ -132,6 +132,58 @@ describe("reading a request body", () => {
     assertResponseStatus(list, 200);
     assertResponseStatus(get, 200);
     assertResponseStatus(deleted, 204);
+  });
+
+  it("reads a delete body with the decoder configured on it", async () => {
+    // Given a delete that its service does send a body with.
+    const api = new SimApi();
+    const widgets = api.resource<Widget>({
+      path: "/widgets",
+      operations: { delete: { decode: decodeColonSeparated } },
+    });
+    widgets.seed({ id: "widget-1", name: widgetName() });
+    let received: unknown = "not called";
+    widgets.operations.delete.override({
+      handle: ({ input, params }) => {
+        received = input;
+
+        return widgets.delete(params["id"] ?? "");
+      },
+    });
+
+    // When one arrives carrying a body.
+    const response = await api.handle(
+      new Request("https://api.example.test/widgets/widget-1", {
+        body: "reason:withdrawn",
+        method: "DELETE",
+      }),
+    );
+
+    // Then the configured decoder read it.
+    assertResponseStatus(response, 204);
+    assertObjectEquals(received, { reason: "withdrawn" });
+  });
+
+  it("skips a bodyless operation's own decoder when no body arrives", async () => {
+    // Given the same delete, configured with the supplied JSON decoder, which
+    // answers "Unexpected end of JSON input" for an empty body.
+    const api = new SimApi();
+    const widgets = api.resource<Widget>({
+      path: "/widgets",
+      operations: { delete: { decode: decodeJson } },
+    });
+    widgets.seed({ id: "widget-1", name: widgetName() });
+
+    // When a delete arrives the ordinary way, with nothing in it.
+    const response = await api.handle(
+      new Request("https://api.example.test/widgets/widget-1", {
+        method: "DELETE",
+      }),
+    );
+
+    // Then the decoder was never reached and the entity is gone.
+    assertResponseStatus(response, 204);
+    assertUndefined(widgets.find("widget-1"));
   });
 
   it("reads a resource operation's body with the inherited decoder", async () => {

@@ -10,7 +10,11 @@ import {
   SemanticOperation,
   type SemanticOperationContext,
 } from "./operation.js";
-import { decodeJson, type RequestDecoder } from "./request-decoder.js";
+import {
+  decodeJson,
+  decodeWhenPresent,
+  type RequestDecoder,
+} from "./request-decoder.js";
 import { compileRoute } from "./route.js";
 import { semanticHttpOperation } from "./semantic-http-operation.js";
 
@@ -35,16 +39,18 @@ const bodyDecoder = (
 ): RequestDecoder => configuration?.decode ?? resource ?? decodeJson;
 
 /**
- * The decoder for an operation that reads no request body.
+ * The decoder for an operation that is usually given no request body.
  *
- * `list`, `get` and `delete` are given no body, and they inherit no decoder
- * from the resource or the API. There would be nothing there for it to read.
- * One configured on the operation itself is honoured, for the services that do
- * send a body with a `DELETE`.
+ * `list`, `get` and `delete` inherit no decoder from the resource or the API.
+ * There would be nothing there for it to read. One configured on the operation
+ * itself is honoured, for the services that do send a body with a `DELETE`,
+ * and it runs only when a body actually arrived. A decoder handed a bodyless
+ * request is how `decodeJson` comes to answer `Unexpected end of JSON input`
+ * for a `DELETE` the caller sent nothing with.
  */
 const emptyDecoder = (
   configuration: RestResourceOperationConfiguration | undefined,
-): RequestDecoder => configuration?.decode ?? decodeEmpty;
+): RequestDecoder => decodeWhenPresent(configuration?.decode ?? decodeEmpty);
 
 const requiredPathParameter = (
   params: Readonly<Record<string, string>>,
