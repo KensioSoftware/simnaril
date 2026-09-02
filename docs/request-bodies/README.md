@@ -21,25 +21,70 @@ await fetch("https://api.example.com/widgets", {
 A malformed body throws out of the decode step and reaches the caller as a network error. Decoding
 failures stay loud.
 
-## Supply a decoder
+## Form encoding
 
 Stripe, Rails and PHP applications take `application/x-www-form-urlencoded` and answer with JSON.
-Give the resource a `decode` function and its operations read bodies that way.
+`decodeForm` reads that format, including the bracketed nesting all three of them write.
 
 ```ts
-const widgets = api.resource<Widget>({
-  name: "widget",
-  path: "/widgets",
-  decode: async (request) =>
-    Object.fromEntries(new URLSearchParams(await request.text())),
-});
+import { decodeForm, SimApi } from "@kensio/simnaril";
+
+const api = new SimApi({ decode: decodeForm });
 ```
+
+A body of
+
+```text
+line_items[0][price_data][unit_amount]=250&line_items[0][quantity]=1&expand[]=customer
+```
+
+reaches the operation as
+
+```json
+{
+  "line_items": [{ "price_data": { "unit_amount": "250" }, "quantity": "1" }],
+  "expand": ["customer"]
+}
+```
+
+Every leaf is a string. A form body carries no types, and guessing at them would make `quantity=1`
+and `postcode=01234` disagree about what a digit is. Convert in the resource's own creation
+behaviour, where the target shape is known.
+
+A part that is a run of digits makes an array, and an empty bracket appends to one. The digits order
+the entries and do not position them, so `a[0]`, `a[5]` and `a[9]` give three elements and never a
+sparse array of ten. A real encoder counts from zero, where the two readings agree.
+
+`decodeForm` ignores the `content-type` header. What a body claims to be and what it holds are two
+facts, and choosing the decoder by hand has already settled the first.
+
+### What it refuses
+
+A real encoder emits well-formed keys. The bodies below are hostile or mistaken input, and each one
+throws a `SyntaxError`, the way a malformed JSON body already does.
+
+| Body            | Refused because                                                                    |
+| --------------- | ---------------------------------------------------------------------------------- |
+| `name=a&name=b` | Which value wins is a guess. Losing half a request quietly is worse than stopping. |
+| `a=1&a[b]=2`    | `a` would have to hold a value and more keys at once                               |
+| `a[][b]=1`      | An empty bracket appends, and only the last part can                               |
+| `a[b`, `[a]`    | Brackets cannot be read out of the key                                             |
+
+## Write your own
 
 A decoder receives the `Request` and returns the input the operation sees. It can be synchronous or
 asynchronous, and it can return any shape at all.
 
 ```ts
 type RequestDecoder = (request: Request) => unknown;
+```
+
+```ts
+const widgets = api.resource<Widget>({
+  name: "widget",
+  path: "/widgets",
+  decode: async (request) => parseXml(await request.text()),
+});
 ```
 
 The package exports `decodeJson`, the default, for a decoder that wants to fall back to it.
@@ -55,9 +100,8 @@ const api = new SimApi({ decode: decodeForm });
 const widgets = api.resource<Widget>({
   name: "widget",
   path: "/widgets",
-  decode: decodeForm,
   operations: {
-    update: { decode: decodeJsonPatch },
+    update: { decode: decodeJson },
   },
 });
 
