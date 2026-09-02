@@ -2,16 +2,19 @@ import type {
   SemanticOperation,
   SemanticOperationContext,
 } from "./http/operation.js";
+import type { RequestDecoder } from "./http/request-decoder.js";
 import type { RestResource } from "./rest-resource.js";
 
-/** Changes the route of one supplied resource operation. */
+/** Changes the route and request decoding of one supplied resource operation. */
 export interface RestResourceOperationConfiguration {
+  decode?: RequestDecoder;
   method?: string;
   path?: string;
 }
 
 /** Configures the HTTP path and supplied operations for a simulated resource. */
 export interface RestResourceProps {
+  decode?: RequestDecoder;
   operations?: Partial<
     Record<RestResourceOperationName, RestResourceOperationConfiguration>
   >;
@@ -37,6 +40,7 @@ export interface RestResourceOperations<T extends object> {
 
 /** Configures a domain action under a resource path. */
 export interface ResourceOperationProps<T extends object, TInput, TOutput> {
+  decode?: RequestDecoder;
   handle: (
     context: SemanticOperationContext<TInput, RestResource<T>>,
   ) => Promise<TOutput> | TOutput;

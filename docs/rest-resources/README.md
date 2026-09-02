@@ -38,6 +38,9 @@ The `list`, `get`, `update`, and `delete` operations call the corresponding
 state method. The `create` operation calls the resource's configured creation
 behavior.
 
+JSON is the default for request bodies. [Request bodies](../request-bodies/README.md) covers
+supplying a decoder for a service that takes another format.
+
 ## Use the state API from tests
 
 The returned `RestResource` delegates every state method:

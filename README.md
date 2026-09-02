@@ -32,6 +32,7 @@ Simnaril requires Node.js 24 or later.
 - [Simulation environments](docs/simulation-environments/README.md)
 - [Resource state](docs/resource-state/README.md)
 - [REST resources](docs/rest-resources/README.md)
+- [Request bodies](docs/request-bodies/README.md)
 - [Custom operations](docs/custom-operations/README.md)
 - [Middleware](docs/middleware/README.md)
 - [Composing a simulation](docs/composing-a-simulation/README.md)

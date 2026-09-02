@@ -2,6 +2,7 @@ import type { RestResource } from "../rest-resource.js";
 import type {
   RestResourceOperationConfiguration,
   RestResourceOperations,
+  RestResourceProps,
 } from "../rest-resource-operation.js";
 import {
   type HttpMiddleware,
@@ -9,12 +10,11 @@ import {
   SemanticOperation,
   type SemanticOperationContext,
 } from "./operation.js";
+import { decodeJson, type RequestDecoder } from "./request-decoder.js";
 import { compileRoute } from "./route.js";
 import { semanticHttpOperation } from "./semantic-http-operation.js";
 
-const decodeEmpty = (): Promise<unknown> => Promise.resolve();
-
-const decodeJson = async (request: Request): Promise<unknown> => request.json();
+const decodeEmpty = (): undefined => undefined;
 
 const encodeJson =
   (status: number) =>
@@ -22,6 +22,29 @@ const encodeJson =
     Response.json(output, { status });
 
 const encodeEmpty = (): Response => new Response(undefined, { status: 204 });
+
+/**
+ * The decoder for an operation that reads a request body.
+ *
+ * A decoder configured on the operation itself always wins. Below that, one
+ * configured on the resource or on the API applies, and JSON is the default.
+ */
+const bodyDecoder = (
+  configuration: RestResourceOperationConfiguration | undefined,
+  resource: RequestDecoder | undefined,
+): RequestDecoder => configuration?.decode ?? resource ?? decodeJson;
+
+/**
+ * The decoder for an operation that reads no request body.
+ *
+ * `list`, `get` and `delete` are given no body, and they inherit no decoder
+ * from the resource or the API. There would be nothing there for it to read.
+ * One configured on the operation itself is honoured, for the services that do
+ * send a body with a `DELETE`.
+ */
+const emptyDecoder = (
+  configuration: RestResourceOperationConfiguration | undefined,
+): RequestDecoder => configuration?.decode ?? decodeEmpty;
 
 const requiredPathParameter = (
   params: Readonly<Record<string, string>>,
@@ -38,7 +61,7 @@ const requiredPathParameter = (
 
 interface SuppliedOperationProps<TInput, TOutput, T extends object> {
   configuration: RestResourceOperationConfiguration | undefined;
-  decode: (request: Request) => Promise<unknown>;
+  decode: RequestDecoder;
   defaultMethod: string;
   defaultPath: string;
   encode: (output: unknown) => Promise<Response> | Response;
@@ -79,18 +102,17 @@ const suppliedOperation = <TInput, TOutput, T extends object>(
 /** Builds conventional collection and item operations for one resource. */
 export function restResourceOperations<T extends object>(
   resource: RestResource<T>,
-  configuration: Partial<
-    Record<keyof RestResourceOperations<T>, RestResourceOperationConfiguration>
-  > = {},
+  props: RestResourceProps,
   resourceMiddleware: readonly HttpMiddleware[] = [],
 ): { http: HttpOperation[]; semantic: RestResourceOperations<T> } {
+  const configuration = props.operations ?? {};
   const list = suppliedOperation<unknown, T[], T>({
     resource,
     resourceMiddleware,
     configuration: configuration.list,
     defaultMethod: "GET",
     defaultPath: "",
-    decode: decodeEmpty,
+    decode: emptyDecoder(configuration.list),
     handle: ({ resource: operationResource }) => operationResource.list(),
     encode: encodeJson(200),
   });
@@ -100,7 +122,7 @@ export function restResourceOperations<T extends object>(
     configuration: configuration.create,
     defaultMethod: "POST",
     defaultPath: "",
-    decode: decodeJson,
+    decode: bodyDecoder(configuration.create, props.decode),
     handle: ({ input, resource: operationResource }) =>
       operationResource.create(input),
     encode: encodeJson(201),
@@ -111,7 +133,7 @@ export function restResourceOperations<T extends object>(
     configuration: configuration.get,
     defaultMethod: "GET",
     defaultPath: "/:id",
-    decode: decodeEmpty,
+    decode: emptyDecoder(configuration.get),
     handle: ({ params, resource: operationResource }) =>
       operationResource.get(requiredPathParameter(params, "id")),
     encode: encodeJson(200),
@@ -123,7 +145,7 @@ export function restResourceOperations<T extends object>(
     configuration: configuration.update,
     defaultMethod: "PATCH",
     defaultPath: "/:id",
-    decode: decodeJson,
+    decode: bodyDecoder(configuration.update, props.decode),
     handle: ({ input, params, resource: operationResource }) =>
       operationResource.update(requiredPathParameter(params, "id"), input),
     encode: encodeJson(200),
@@ -135,7 +157,7 @@ export function restResourceOperations<T extends object>(
     configuration: configuration.delete,
     defaultMethod: "DELETE",
     defaultPath: "/:id",
-    decode: decodeEmpty,
+    decode: emptyDecoder(configuration.delete),
     handle: ({ params, resource: operationResource }) =>
       operationResource.delete(requiredPathParameter(params, "id")),
     encode: encodeEmpty,
