@@ -12,6 +12,7 @@ import {
 import { describe, expectTypeOf, it } from "vitest";
 
 import {
+  requirePathParameter,
   SimApi,
   SimEnvironment,
   SimResource,
@@ -26,24 +27,7 @@ describe("a simulated API", () => {
     status: "active" | "archived";
   }
 
-  const pathParameter = (
-    params: Readonly<Record<string, string>>,
-    name: string,
-  ): string => {
-    const value = params[name];
-
-    if (value === undefined) {
-      throw new Error(`Missing test path parameter ":${name}".`);
-    }
-
-    return value;
-  };
-
-  const request = (
-    method: string,
-    path: string,
-    body?: Partial<Widget>,
-  ): Request => {
+  const request = (method: string, path: string, body?: object): Request => {
     const url = `https://api.example.test${path}`;
 
     if (body === undefined) {
@@ -235,6 +219,22 @@ describe("a simulated API", () => {
     assertStringIncludes(error.message, "already exposed at collection path");
   });
 
+  it("rejects equivalent parameterised collection paths", () => {
+    // Given an API with a collection below one named route parameter.
+    const api = new SimApi();
+    api.resource<Widget>({ path: "/accounts/:account/widgets" });
+
+    // When another resource changes only the parameter's name.
+    const error = assertThrowsError(() => {
+      api.resource<Widget>({ path: "/accounts/:owner/widgets" });
+    });
+
+    // Then the API rejects the route shape before requests become ambiguous.
+    assertInstanceOf(error, TypeError);
+    assertStringIncludes(error.message, "already exposed at collection path");
+    assertStringIncludes(error.message, "/accounts/:owner/widgets");
+  });
+
   it("maps missing and duplicate entities to simulated responses", async () => {
     // Given an API resource containing one entity.
     const api = new SimApi();
@@ -312,6 +312,93 @@ describe("a simulated API", () => {
     assertInstanceOf(oldRoute, UnimplementedRouteError);
   });
 
+  it("locates item state from a parameterised collection path", async () => {
+    // Given issues stored under repository-scoped identities.
+    interface Issue {
+      number: number;
+      owner: string;
+      repository: string;
+      title: string;
+    }
+    const api = new SimApi();
+    const issues = api.resource<Issue>({
+      identify: (issue) => `${issue.owner}/${issue.repository}#${issue.number}`,
+      itemPath: "/:number",
+      locate: (params) =>
+        `${requirePathParameter(params, "owner")}/${requirePathParameter(params, "repository")}#${requirePathParameter(params, "number")}`,
+      path: "/repos/:owner/:repository/issues",
+    });
+    const issue: Issue = {
+      number: faker.number.int({ min: 1 }),
+      owner: faker.internet.username(),
+      repository: faker.word.noun(),
+      title: faker.lorem.sentence(),
+    };
+    issues.seed(issue);
+    const itemPath = `/repos/${issue.owner}/${issue.repository}/issues/${issue.number}`;
+
+    // When the item is read and changed through its nested HTTP route.
+    const read = await api.handle(request("GET", itemPath));
+    const changedTitle = faker.lorem.sentence();
+    const updated = await api.handle(
+      request("PATCH", itemPath, { title: changedTitle }),
+    );
+
+    // Then both operations use the resource's route-to-state locator.
+    assertResponseStatus(read, 200);
+    assertObjectEquals(await read.json(), issue);
+    assertResponseStatus(updated, 200);
+    assertObjectEquals(await updated.json(), { ...issue, title: changedTitle });
+    assertIdentical(
+      issues.locate({
+        number: String(issue.number),
+        owner: issue.owner,
+        repository: issue.repository,
+      }),
+      `${issue.owner}/${issue.repository}#${issue.number}`,
+    );
+  });
+
+  it("leaves disabled supplied operations unimplemented", async () => {
+    // Given a read-only resource containing one arranged entity.
+    const api = new SimApi();
+    const widgets = api.resource<Widget>({
+      operations: {
+        create: false,
+        delete: false,
+        update: false,
+      },
+      path: "/widgets",
+    });
+    const widget: Widget = {
+      id: faker.string.uuid(),
+      name: faker.commerce.productName(),
+      status: "active",
+    };
+    widgets.seed(widget);
+
+    // When the resource is read and a caller tries to change it.
+    const read = await api.handle(request("GET", `/widgets/${widget.id}`));
+    const createError = await assertThrowsErrorAsync(() =>
+      api.handle(request("POST", "/widgets", widget)),
+    );
+    const updateError = await assertThrowsErrorAsync(() =>
+      api.handle(
+        request("PATCH", `/widgets/${widget.id}`, { status: "archived" }),
+      ),
+    );
+    const deleteError = await assertThrowsErrorAsync(() =>
+      api.handle(request("DELETE", `/widgets/${widget.id}`)),
+    );
+
+    // Then reads work and each disabled route fails as unimplemented.
+    assertResponseStatus(read, 200);
+    assertObjectEquals(await read.json(), widget);
+    assertInstanceOf(createError, UnimplementedRouteError);
+    assertInstanceOf(updateError, UnimplementedRouteError);
+    assertInstanceOf(deleteError, UnimplementedRouteError);
+  });
+
   it("keeps the HTTP pipeline around a semantic operation override", async () => {
     // Given a create override which uses decoded input and HTTP context.
     const api = new SimApi();
@@ -382,7 +469,7 @@ describe("a simulated API", () => {
       path: "/:id/archive",
       handle({ params, query, resource }) {
         const status = query.get("confirm") === "yes" ? "archived" : "active";
-        return resource.update(pathParameter(params, "id"), { status });
+        return resource.update(requirePathParameter(params, "id"), { status });
       },
     });
     const reportOperation = api.operation(
@@ -463,7 +550,7 @@ describe("a simulated API", () => {
       path: "/:id/archive",
       handle({ params, resource }) {
         events.push("operation");
-        return resource.update(pathParameter(params, "id"), {
+        return resource.update(requirePathParameter(params, "id"), {
           status: "archived",
         });
       },
@@ -529,7 +616,9 @@ describe("a simulated API", () => {
       path: "/:id/archive",
       handle({ input, params, resource }) {
         receivedReason = input.reason;
-        resource.update(pathParameter(params, "id"), { status: "archived" });
+        resource.update(requirePathParameter(params, "id"), {
+          status: "archived",
+        });
       },
     });
     const reason = faker.lorem.sentence();
@@ -582,6 +671,21 @@ describe("a simulated API", () => {
     const invalidMethod = assertThrowsError(() => {
       api.operation("GET REPORT", "/reports", () => new Response());
     });
+    const relativeItemPath = assertThrowsError(() => {
+      new SimApi().resource<Widget>({
+        itemPath: ":id",
+        path: "/widgets",
+      });
+    });
+    const relativeSuppliedPath = assertThrowsError(() => {
+      new SimApi().resource<Widget>({
+        operations: { get: { path: ":id" } },
+        path: "/widgets",
+      });
+    });
+    const missingPathParameter = assertThrowsError(() =>
+      requirePathParameter({}, "id"),
+    );
     const missingRequiredParameters = (
       ["get", "update", "delete"] as const
     ).map((operationName) =>
@@ -603,6 +707,9 @@ describe("a simulated API", () => {
       duplicateParameter,
       invalidPath,
       invalidMethod,
+      relativeItemPath,
+      relativeSuppliedPath,
+      missingPathParameter,
       ...missingRequiredParameters,
     ]) {
       assertInstanceOf(error, TypeError);
@@ -616,6 +723,12 @@ describe("a simulated API", () => {
     assertStringIncludes(duplicateParameter.message, "appears more than once");
     assertStringIncludes(invalidPath.message, "absolute operation path");
     assertStringIncludes(invalidMethod.message, "Expected an HTTP method");
+    assertStringIncludes(relativeItemPath.message, "resource-relative");
+    assertStringIncludes(relativeSuppliedPath.message, "resource-relative");
+    assertIdentical(
+      missingPathParameter.message,
+      'Matched operation has no ":id" path parameter.',
+    );
     for (const error of missingRequiredParameters) {
       assertStringIncludes(error.message, 'must include path parameter ":id"');
     }
@@ -632,6 +745,41 @@ describe("a simulated API", () => {
     // Then the empty path template supplies an empty parameter object.
     assertResponseStatus(response, 200);
     assertObjectEquals(await response.json(), {});
+  });
+
+  it("requires path parameters to be own string-valued properties", () => {
+    // Given inherited, undefined and explicitly provided path parameters.
+    const explicitValue = faker.string.uuid();
+    const params = Object.create({
+      constructor: faker.string.uuid(),
+    }) as Record<string, string>;
+    Object.defineProperty(params, "toString", { value: explicitValue });
+    const undefinedParams = { id: undefined } as unknown as Record<
+      string,
+      string
+    >;
+
+    // When each parameter is required.
+    const inheritedError = assertThrowsError(() =>
+      requirePathParameter(params, "constructor"),
+    );
+    const undefinedError = assertThrowsError(() =>
+      requirePathParameter(undefinedParams, "id"),
+    );
+    const explicitResult = requirePathParameter(params, "toString");
+
+    // Then only the explicitly provided string is returned.
+    assertInstanceOf(inheritedError, TypeError);
+    assertIdentical(
+      inheritedError.message,
+      'Matched operation has no ":constructor" path parameter.',
+    );
+    assertInstanceOf(undefinedError, TypeError);
+    assertIdentical(
+      undefinedError.message,
+      'Matched operation has no ":id" path parameter.',
+    );
+    assertIdentical(explicitResult, explicitValue);
   });
 
   it("refuses middleware which calls next more than once", async () => {
@@ -653,8 +801,9 @@ describe("a simulated API", () => {
   });
 
   it("fails loudly for an unimplemented route", async () => {
-    // Given an API that implements only conventional widget routes.
-    const api = new SimApi();
+    // Given a named API that implements only conventional widget routes.
+    const apiName = faker.company.name();
+    const api = new SimApi({ name: apiName });
     api.resource<Widget>({ path: "/widgets" });
     const url = `https://api.example.test/widgets/${faker.string.uuid()}/archive?force=true`;
     const unknownUrl = "https://api.example.test/status";
@@ -670,17 +819,18 @@ describe("a simulated API", () => {
 
     // Then both throw route errors instead of returning simulated 404s.
     assertInstanceOf(error, UnimplementedRouteError);
+    assertIdentical(error.apiName, apiName);
     assertIdentical(error.method, "GET");
     assertIdentical(error.url, url);
     assertIdentical(
       error.message,
-      `GET ${url} reached SimApi, but SimApi has no handler for GET ${new URL(url).pathname}.`,
+      `GET ${url} reached ${apiName}, but ${apiName} has no handler for GET ${new URL(url).pathname}.`,
     );
     assertInstanceOf(unknownError, UnimplementedRouteError);
     assertIdentical(unknownError.pathname, "/status");
     assertIdentical(
       unknownError.message,
-      `GET ${unknownUrl} reached SimApi, but SimApi has no handler for GET /status.`,
+      `GET ${unknownUrl} reached ${apiName}, but ${apiName} has no handler for GET /status.`,
     );
   });
 

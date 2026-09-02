@@ -11,8 +11,17 @@ import { attachRestResource, RestResource } from "./rest-resource.js";
 import type { RestResourceProps } from "./rest-resource-operation.js";
 import { SimResource, type SimResourceProps } from "./resource.js";
 
+const resourcePathShape = (path: string): string =>
+  path
+    .split("/")
+    .map((segment) => (segment.startsWith(":") ? ":" : segment))
+    .join("/");
+
 /** Configures behaviour shared by every resource on one simulated API. */
 export interface SimApiProps {
+  /** The service name used in route errors. `SimApi` when none is given. */
+  name?: string;
+
   /**
    * How request bodies are read, for the resources that read one.
    *
@@ -36,13 +45,15 @@ export interface SimApiResourceProps<T extends object>
 
 /** Routes HTTP requests to stateful simulated resources. */
 export class SimApi {
+  readonly name: string;
   readonly #paths = new Set<string>();
   readonly #router: OperationRouter;
   readonly #decode: RequestDecoder | undefined;
 
   constructor(props: SimApiProps = {}) {
+    this.name = props.name ?? "SimApi";
     this.#decode = props.decode;
-    this.#router = new OperationRouter(props.formatError);
+    this.#router = new OperationRouter(this.name, props.formatError);
   }
 
   /** Adds middleware around every matched operation in this API. */
@@ -53,10 +64,12 @@ export class SimApi {
 
   /** Creates resource state and exposes its conventional HTTP operations. */
   resource<T extends object>(props: SimApiResourceProps<T>): RestResource<T> {
-    const { decode, operations, path, ...stateProps } = props;
+    const { decode, itemPath, locate, operations, path, ...stateProps } = props;
     const restProps: RestResourceProps = {
       path,
       ...(decode === undefined ? {} : { decode }),
+      ...(itemPath === undefined ? {} : { itemPath }),
+      ...(locate === undefined ? {} : { locate }),
       ...(operations === undefined ? {} : { operations }),
     };
     return this.expose(new SimResource<T>(stateProps), restProps);
@@ -68,8 +81,9 @@ export class SimApi {
     props: RestResourceProps,
   ): RestResource<T> {
     validateResourcePath(props.path);
+    const pathShape = resourcePathShape(props.path);
 
-    if (this.#paths.has(props.path)) {
+    if (this.#paths.has(pathShape)) {
       throw new TypeError(
         `A resource is already exposed at collection path "${props.path}".`,
       );
@@ -79,7 +93,7 @@ export class SimApi {
     attachRestResource(resource, (operation) => {
       this.#router.register(operation);
     });
-    this.#paths.add(props.path);
+    this.#paths.add(pathShape);
     return resource;
   }
 

@@ -24,7 +24,7 @@ describe("a simulated resource", () => {
 
   it("seeds and reads exact entities by their conventional id", () => {
     // Given a resource with two exact entities arranged in it.
-    const widgets = new SimResource<Widget>({});
+    const widgets = new SimResource<Widget>();
     const first: Widget = {
       id: faker.string.uuid(),
       name: faker.commerce.productName(),

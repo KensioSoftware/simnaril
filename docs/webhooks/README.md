@@ -89,7 +89,16 @@ console.log(result?.response?.status);
 console.log(result?.error);
 ```
 
-`response` and `error` mean different things, and only one of them is ever set.
+Check `delivered` to distinguish the two result shapes. A delivered result has
+`response`. A failed result has `error`.
+
+```ts
+if (result?.delivered === true) {
+  console.log(result.response.status);
+} else {
+  console.error(result?.error);
+}
+```
 
 | The delivery                              | Result                                   |
 | ----------------------------------------- | ---------------------------------------- |

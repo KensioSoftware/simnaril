@@ -26,17 +26,21 @@ export interface WebhookDelivery {
 }
 
 /** What one endpoint did with one delivery. */
-export interface WebhookDeliveryResult {
-  readonly delivery: WebhookDelivery;
-  /**
-   * What stopped the request from arriving, or nothing when it arrived.
-   *
-   * An endpoint that answered 400 or 500 arrived. That is a `response`.
-   */
-  readonly error: unknown;
-  /** The endpoint's answer, whatever its status, or nothing when it never arrived. */
-  readonly response: Response | undefined;
-}
+export type WebhookDeliveryResult =
+  | {
+      readonly delivered: true;
+      readonly delivery: WebhookDelivery;
+      readonly error: undefined;
+      /** The endpoint's answer, whatever its status. */
+      readonly response: Response;
+    }
+  | {
+      readonly delivered: false;
+      readonly delivery: WebhookDelivery;
+      /** What stopped the request from arriving. */
+      readonly error: unknown;
+      readonly response: undefined;
+    };
 
 /**
  * A queue of requests a simulated service sends outwards.
@@ -175,8 +179,8 @@ async function send(delivery: WebhookDelivery): Promise<WebhookDeliveryResult> {
       method: delivery.method ?? "POST",
     });
 
-    return { delivery, error: undefined, response };
+    return { delivered: true, delivery, error: undefined, response };
   } catch (error) {
-    return { delivery, error, response: undefined };
+    return { delivered: false, delivery, error, response: undefined };
   }
 }

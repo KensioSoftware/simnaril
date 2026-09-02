@@ -21,8 +21,8 @@ const widgets = api.resource<Widget>({
 });
 ```
 
-The resource path is an absolute collection path. It cannot contain path
-parameters, a query string, or a fragment.
+The resource path is an absolute collection path. It may contain named path
+parameters. It cannot contain a query string or fragment.
 
 The supplied routes are:
 
@@ -58,6 +58,64 @@ widgets.clear();
 
 The same state backs direct method calls and HTTP requests. A change through
 one interface is visible through the other.
+
+## Nest a resource under another route
+
+A collection path can name its parent resources. `itemPath` is appended for
+the three item operations.
+
+```ts
+import { requirePathParameter } from "@kensio/simnaril";
+
+interface Issue {
+  number: number;
+  owner: string;
+  repository: string;
+  title: string;
+}
+
+const issues = api.resource<Issue>({
+  path: "/repos/:owner/:repository/issues",
+  itemPath: "/:number",
+  identify: (issue) => `${issue.owner}/${issue.repository}#${issue.number}`,
+  locate: (params) =>
+    `${requirePathParameter(params, "owner")}/${requirePathParameter(
+      params,
+      "repository",
+    )}#${requirePathParameter(params, "number")}`,
+});
+```
+
+This resource supplies collection routes under each repository and item routes
+ending in `/:number`. `identify` turns an entity into its state identity.
+`locate` turns the matched route parameters back into the same identity.
+
+`locate` applies to get, update, and delete. Override list or create when the
+parent parameters change collection behaviour. Their handlers receive the same
+`params` object.
+
+The default locator reads `params.id`. Define `locate` when an item route uses
+another parameter or needs more than one value. `requirePathParameter` returns
+a parameter or throws a clear error when the route did not supply it.
+
+## Leave unsupported operations out
+
+Set a supplied operation to `false` when the simulated service has no such
+route:
+
+```ts
+const widgets = api.resource<Widget>({
+  path: "/widgets",
+  operations: {
+    create: false,
+    update: false,
+    delete: false,
+  },
+});
+```
+
+The example keeps the list and get routes. Requests to the three omitted routes
+throw `UnimplementedRouteError`.
 
 ## Configure creation
 
@@ -100,6 +158,15 @@ unfinished simulation visible during development.
 
 Node's `fetch()` wraps an `UnimplementedRouteError` in a `TypeError`. The
 original error is available as `error.cause`.
+
+Give the API a name when a simulation contains several services:
+
+```ts
+const api = new SimApi({ name: "GitHub" });
+```
+
+An unknown route then reports that it reached `GitHub`. The default name is
+`SimApi`.
 
 ## Shape the errors one API answers with
 
@@ -155,7 +222,9 @@ same.
 
 The supplied operation names are `list`, `create`, `get`, `update`, and
 `delete`. Configured paths for `get`, `update`, and `delete` must include an
-`:id` parameter because their default handlers use it as the state identity.
+`:id` parameter when the resource uses the default locator. A configured
+`locate` function can use any parameters present in the collection and item
+paths.
 
 Read [Custom operations](../custom-operations/README.md) when a route needs
 different behavior.

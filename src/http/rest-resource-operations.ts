@@ -1,108 +1,21 @@
 import type { RestResource } from "../rest-resource.js";
 import type {
-  RestResourceOperationConfiguration,
   RestResourceOperations,
   RestResourceProps,
 } from "../rest-resource-operation.js";
+import type { HttpMiddleware, HttpOperation } from "./operation.js";
 import {
-  type HttpMiddleware,
-  type HttpOperation,
-  SemanticOperation,
-  type SemanticOperationContext,
-} from "./operation.js";
-import {
-  decodeJson,
-  decodeNothing,
-  decodeWhenPresent,
-  type RequestDecoder,
-} from "./request-decoder.js";
-import { compileRoute } from "./route.js";
-import { semanticHttpOperation } from "./semantic-http-operation.js";
+  bodyDecoder,
+  configuredOperation,
+  emptyDecoder,
+  encodeEmpty,
+  encodeJson,
+  presentHttpOperations,
+} from "./rest-resource-operation-defaults.js";
+import { suppliedOperation } from "./supplied-rest-resource-operation.js";
 
-const encodeJson =
-  (status: number) =>
-  (output: unknown): Response =>
-    Response.json(output, { status });
-
-const encodeEmpty = (): Response => new Response(undefined, { status: 204 });
-
-/**
- * The decoder for an operation that reads a request body.
- *
- * A decoder configured on the operation itself always wins. Below that, one
- * configured on the resource or on the API applies, and JSON is the default.
- */
-const bodyDecoder = (
-  configuration: RestResourceOperationConfiguration | undefined,
-  resource: RequestDecoder | undefined,
-): RequestDecoder => configuration?.decode ?? resource ?? decodeJson;
-
-/**
- * The decoder for an operation that is usually given no request body.
- *
- * `list`, `get` and `delete` inherit no decoder from the resource or the API.
- * There would be nothing there for it to read. One configured on the operation
- * itself is honoured, for the services that do send a body with a `DELETE`,
- * and it runs only when a body actually arrived. A decoder handed a bodyless
- * request is how `decodeJson` comes to answer `Unexpected end of JSON input`
- * for a `DELETE` the caller sent nothing with.
- */
-const emptyDecoder = (
-  configuration: RestResourceOperationConfiguration | undefined,
-): RequestDecoder => decodeWhenPresent(configuration?.decode ?? decodeNothing);
-
-const requiredPathParameter = (
-  params: Readonly<Record<string, string>>,
-  name: string,
-): string => {
-  const value = params[name];
-
-  if (value === undefined) {
-    throw new TypeError(`Matched operation has no ":${name}" path parameter.`);
-  }
-
-  return value;
-};
-
-interface SuppliedOperationProps<TInput, TOutput, T extends object> {
-  configuration: RestResourceOperationConfiguration | undefined;
-  decode: RequestDecoder;
-  defaultMethod: string;
-  defaultPath: string;
-  encode: (output: unknown) => Promise<Response> | Response;
-  handle: (
-    context: SemanticOperationContext<TInput, RestResource<T>>,
-  ) => Promise<TOutput> | TOutput;
-  resource: RestResource<T>;
-  resourceMiddleware: readonly HttpMiddleware[];
-  requiredParameters?: readonly string[];
-}
-
-const suppliedOperation = <TInput, TOutput, T extends object>(
-  props: SuppliedOperationProps<TInput, TOutput, T>,
-): {
-  http: HttpOperation;
-  semantic: SemanticOperation<TInput, TOutput, RestResource<T>>;
-} => {
-  const semantic = new SemanticOperation(props.handle);
-  const route = compileRoute(
-    `${props.resource.path}${props.configuration?.path ?? props.defaultPath}`,
-    props.requiredParameters,
-  );
-
-  return {
-    semantic,
-    http: semanticHttpOperation({
-      decode: props.decode,
-      encode: props.encode,
-      method: props.configuration?.method ?? props.defaultMethod,
-      resource: props.resource,
-      resourceMiddleware: props.resourceMiddleware,
-      route,
-      semantic,
-    }),
-  };
-};
+const requiredItemParameters = (props: RestResourceProps): readonly string[] =>
+  props.locate === undefined ? ["id"] : [];
 
 /** Builds conventional collection and item operations for one resource. */
 export function restResourceOperations<T extends object>(
@@ -111,23 +24,32 @@ export function restResourceOperations<T extends object>(
   resourceMiddleware: readonly HttpMiddleware[] = [],
 ): { http: HttpOperation[]; semantic: RestResourceOperations<T> } {
   const configuration = props.operations ?? {};
+  const listConfiguration = configuredOperation(configuration.list);
+  const createConfiguration = configuredOperation(configuration.create);
+  const getConfiguration = configuredOperation(configuration.get);
+  const updateConfiguration = configuredOperation(configuration.update);
+  const deleteConfiguration = configuredOperation(configuration.delete);
+  const itemPath = props.itemPath ?? "/:id";
+  const itemParameters = requiredItemParameters(props);
   const list = suppliedOperation<unknown, T[], T>({
     resource,
     resourceMiddleware,
-    configuration: configuration.list,
+    configuration: listConfiguration,
     defaultMethod: "GET",
     defaultPath: "",
-    decode: emptyDecoder(configuration.list),
+    decode: emptyDecoder(listConfiguration),
+    enabled: configuration.list !== false,
     handle: ({ resource: operationResource }) => operationResource.list(),
     encode: encodeJson(200),
   });
   const create = suppliedOperation<Partial<T>, T, T>({
     resource,
     resourceMiddleware,
-    configuration: configuration.create,
+    configuration: createConfiguration,
     defaultMethod: "POST",
     defaultPath: "",
-    decode: bodyDecoder(configuration.create, props.decode),
+    decode: bodyDecoder(createConfiguration, props.decode),
+    enabled: configuration.create !== false,
     handle: ({ input, resource: operationResource }) =>
       operationResource.create(input),
     encode: encodeJson(201),
@@ -135,42 +57,51 @@ export function restResourceOperations<T extends object>(
   const get = suppliedOperation<unknown, T, T>({
     resource,
     resourceMiddleware,
-    configuration: configuration.get,
+    configuration: getConfiguration,
     defaultMethod: "GET",
-    defaultPath: "/:id",
-    decode: emptyDecoder(configuration.get),
+    defaultPath: itemPath,
+    decode: emptyDecoder(getConfiguration),
+    enabled: configuration.get !== false,
     handle: ({ params, resource: operationResource }) =>
-      operationResource.get(requiredPathParameter(params, "id")),
+      operationResource.get(operationResource.locate(params)),
     encode: encodeJson(200),
-    requiredParameters: ["id"],
+    requiredParameters: itemParameters,
   });
   const update = suppliedOperation<Partial<T>, T, T>({
     resource,
     resourceMiddleware,
-    configuration: configuration.update,
+    configuration: updateConfiguration,
     defaultMethod: "PATCH",
-    defaultPath: "/:id",
-    decode: bodyDecoder(configuration.update, props.decode),
+    defaultPath: itemPath,
+    decode: bodyDecoder(updateConfiguration, props.decode),
+    enabled: configuration.update !== false,
     handle: ({ input, params, resource: operationResource }) =>
-      operationResource.update(requiredPathParameter(params, "id"), input),
+      operationResource.update(operationResource.locate(params), input),
     encode: encodeJson(200),
-    requiredParameters: ["id"],
+    requiredParameters: itemParameters,
   });
   const deleteOperation = suppliedOperation<unknown, T, T>({
     resource,
     resourceMiddleware,
-    configuration: configuration.delete,
+    configuration: deleteConfiguration,
     defaultMethod: "DELETE",
-    defaultPath: "/:id",
-    decode: emptyDecoder(configuration.delete),
+    defaultPath: itemPath,
+    decode: emptyDecoder(deleteConfiguration),
+    enabled: configuration.delete !== false,
     handle: ({ params, resource: operationResource }) =>
-      operationResource.delete(requiredPathParameter(params, "id")),
+      operationResource.delete(operationResource.locate(params)),
     encode: encodeEmpty,
-    requiredParameters: ["id"],
+    requiredParameters: itemParameters,
   });
 
   return {
-    http: [list.http, create.http, get.http, update.http, deleteOperation.http],
+    http: presentHttpOperations(
+      list.http,
+      create.http,
+      get.http,
+      update.http,
+      deleteOperation.http,
+    ),
     semantic: {
       list: list.semantic,
       create: create.semantic,
