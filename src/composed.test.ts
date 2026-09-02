@@ -63,11 +63,11 @@ describe("a simulation composed of every piece", () => {
           : undefined,
     });
 
-    const sessions = api.resource<Session>({
+    const sessions = api.resource<Session, Created>({
       name: "session",
       path: "/v1/checkout/sessions",
       create: (input) => ({
-        amount_total: totalOf(input as Created),
+        amount_total: totalOf(input),
         id: `cs_test_${faker.string.alphanumeric(10)}`,
         status: "open",
       }),

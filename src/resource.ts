@@ -14,8 +14,8 @@ function identifyById(entity: object): string {
 }
 
 /** Configures the state and domain behaviour for one simulated resource. */
-export interface SimResourceProps<T extends object> {
-  create?: (input: Partial<T>) => T;
+export interface SimResourceProps<T extends object, TCreate = Partial<T>> {
+  create?: (input: TCreate) => T;
   identify?: (entity: T) => string;
   name?: string;
 }

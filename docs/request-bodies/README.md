@@ -51,6 +51,40 @@ Every leaf is a string. A form body carries no types, and guessing at them would
 and `postcode=01234` disagree about what a digit is. Convert in the resource's own creation
 behaviour, where the target shape is known.
 
+Name the decoded shape with the second type argument to `resource()`:
+
+```ts
+interface CheckoutSession {
+  amountTotal: number;
+  id: string;
+}
+
+interface CreateCheckoutSession {
+  line_items?: {
+    price_data?: { unit_amount?: string };
+    quantity?: string;
+  }[];
+}
+
+const sessions = api.resource<CheckoutSession, CreateCheckoutSession>({
+  path: "/v1/checkout/sessions",
+  create(input) {
+    return {
+      amountTotal: totalOf(input.line_items ?? []),
+      id: crypto.randomUUID(),
+    };
+  },
+});
+```
+
+The second type argument defaults to `Partial<CheckoutSession>`. It describes the input to the
+resource's `create` function.
+
+The supplied update operation keeps `Partial<T>` as its input type. Its default behaviour merges
+the decoded object into the stored entity. The decoded fields therefore have to match the entity.
+Disable the supplied update and add a typed resource operation when an API uses another wire shape
+for updates.
+
 A part that is a run of digits makes an array, and an empty bracket appends to one. The digits order
 the entries and do not position them, so `a[0]`, `a[5]` and `a[9]` give three elements and never a
 sparse array of ten. A real encoder counts from zero, where the two readings agree.

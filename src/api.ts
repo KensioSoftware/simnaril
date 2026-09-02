@@ -40,8 +40,8 @@ export interface SimApiProps {
 }
 
 /** Configures conventional resource state and its HTTP operations. */
-export interface SimApiResourceProps<T extends object>
-  extends SimResourceProps<T>, RestResourceProps {}
+export interface SimApiResourceProps<T extends object, TCreate = Partial<T>>
+  extends SimResourceProps<T, TCreate>, RestResourceProps {}
 
 /** Routes HTTP requests to stateful simulated resources. */
 export class SimApi {
@@ -63,7 +63,9 @@ export class SimApi {
   }
 
   /** Creates resource state and exposes its conventional HTTP operations. */
-  resource<T extends object>(props: SimApiResourceProps<T>): RestResource<T> {
+  resource<T extends object, TCreate = Partial<T>>(
+    props: SimApiResourceProps<T, TCreate>,
+  ): RestResource<T> {
     const { decode, itemPath, locate, operations, path, ...stateProps } = props;
     const restProps: RestResourceProps = {
       path,
@@ -72,7 +74,10 @@ export class SimApi {
       ...(locate === undefined ? {} : { locate }),
       ...(operations === undefined ? {} : { operations }),
     };
-    return this.expose(new SimResource<T>(stateProps), restProps);
+    return this.expose(
+      new SimResource<T>(stateProps as SimResourceProps<T>),
+      restProps,
+    );
   }
 
   /** Exposes existing resource state through conventional HTTP operations. */
