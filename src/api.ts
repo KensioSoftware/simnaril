@@ -33,8 +33,8 @@ export interface SimApiProps {
   /**
    * How a thrown error becomes a response.
    *
-   * Runs before the supplied `EntityNotFoundError` and `DuplicateEntityError`
-   * mappings, and declining an error with `undefined` leaves it to them.
+   * Runs before Simnaril's supplied error mappings. Declining an error with
+   * `undefined` leaves it to those mappings.
    */
   formatError?: ErrorFormatter;
 }

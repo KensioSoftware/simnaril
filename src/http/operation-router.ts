@@ -1,5 +1,6 @@
 import { DuplicateEntityError } from "../duplicate-entity-error.js";
 import { EntityNotFoundError } from "../entity-not-found-error.js";
+import { IdempotencyKeyReusedError } from "../idempotency-key-reused-error.js";
 import { UnimplementedRouteError } from "../unimplemented-route-error.js";
 import type { ErrorFormatter } from "./error-formatter.js";
 import type {
@@ -105,6 +106,10 @@ export class OperationRouter {
 
       if (error instanceof DuplicateEntityError) {
         return Response.json({ error: error.message }, { status: 409 });
+      }
+
+      if (error instanceof IdempotencyKeyReusedError) {
+        return Response.json({ error: error.message }, { status: 422 });
       }
 
       throw error;
