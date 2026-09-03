@@ -7,6 +7,11 @@ export {
 } from "./environment.js";
 export { DuplicateEntityError } from "./duplicate-entity-error.js";
 export { EntityNotFoundError } from "./entity-not-found-error.js";
+export { IdempotencyKeyReusedError } from "./idempotency-key-reused-error.js";
+export {
+  replayIdempotentRequests,
+  type ReplayIdempotentRequestsProps,
+} from "./http/replay-idempotent-requests.js";
 export type {
   HttpMiddleware,
   HttpOperationContext,

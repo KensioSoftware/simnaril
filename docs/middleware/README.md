@@ -67,6 +67,10 @@ belong to a resource.
 Middleware at the same scope runs in registration order on the way in and
 reverse registration order on the way out.
 
+Register `replayIdempotentRequests()` before response-changing API middleware.
+It then captures the response after those later middleware functions have made
+their changes. See [Idempotent requests](../idempotent-requests/README.md).
+
 ## Return a response early
 
 A middleware function can skip `next()` and return its own response. This is
