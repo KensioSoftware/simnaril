@@ -38,3 +38,4 @@ Simnaril requires Node.js 24 or later.
 - [Idempotent requests](docs/idempotent-requests/README.md)
 - [Webhooks](docs/webhooks/README.md)
 - [Composing a simulation](docs/composing-a-simulation/README.md)
+- [Check a simulation against the real service](docs/checking-against-real-service/README.md)
