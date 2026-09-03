@@ -4,7 +4,7 @@ import {
 } from "./http/interception.js";
 import { UnclaimedOriginError } from "./unclaimed-origin-error.js";
 
-const activeOrigins = new Set<string>();
+const activeOrigins = new Map<string, SimEnvironment>();
 
 /** Handles HTTP requests for one simulated service. */
 export interface SimService {
@@ -14,8 +14,9 @@ export interface SimService {
 /** Selects what an environment does with requests outside every simulation. */
 export type UnhandledRequestPolicy = "error" | "passthrough";
 
-/** Configures how a simulated environment handles unclaimed requests. */
+/** Configures a simulated environment. */
 export interface SimEnvironmentProps {
+  name?: string;
   unhandledRequest?: UnhandledRequestPolicy;
 }
 
@@ -23,10 +24,12 @@ export interface SimEnvironmentProps {
 export class SimEnvironment implements Disposable {
   readonly #services = new Map<string, SimService>();
   readonly #interception: HttpInterception;
+  readonly #name: string | undefined;
   readonly #unhandledRequest: UnhandledRequestPolicy;
   #disposed = false;
 
   constructor(props: SimEnvironmentProps = {}) {
+    this.#name = props.name;
     this.#unhandledRequest = props.unhandledRequest ?? "error";
     this.#interception = interceptHttpRequests((request) =>
       this.#handle(request),
@@ -39,24 +42,27 @@ export class SimEnvironment implements Disposable {
 
     if (this.#disposed) {
       throw new Error(
-        `Cannot register ${normalizedOrigin} with a disposed SimEnvironment.`,
+        `Cannot register ${normalizedOrigin} with a disposed ${this.#description()}.`,
       );
     }
 
     if (this.#services.has(normalizedOrigin)) {
+      const environment =
+        this.#name === undefined ? "" : ` in ${this.#description()}`;
       throw new Error(
-        `A simulated service is already registered for ${normalizedOrigin}.`,
+        `A simulated service is already registered for ${normalizedOrigin}${environment}.`,
       );
     }
 
-    if (activeOrigins.has(normalizedOrigin)) {
+    const activeEnvironment = activeOrigins.get(normalizedOrigin);
+    if (activeEnvironment !== undefined) {
       throw new Error(
-        `Another active SimEnvironment is already registered for ${normalizedOrigin}.`,
+        `Another active ${activeEnvironment.#description()} is already registered for ${normalizedOrigin}.`,
       );
     }
 
     this.#services.set(normalizedOrigin, service);
-    activeOrigins.add(normalizedOrigin);
+    activeOrigins.set(normalizedOrigin, this);
   }
 
   /** Stops this environment from intercepting requests. */
@@ -89,7 +95,13 @@ export class SimEnvironment implements Disposable {
       return undefined;
     }
 
-    throw new UnclaimedOriginError(request);
+    throw new UnclaimedOriginError(request, this.#name);
+  }
+
+  #description(): string {
+    return this.#name === undefined
+      ? "SimEnvironment"
+      : `SimEnvironment (${this.#name})`;
   }
 
   #normalizeOrigin(origin: string | URL): string {

@@ -177,6 +177,29 @@ describe("a simulation environment", () => {
     assertIdentical(requestsReceived, 0);
   });
 
+  it("names the environment that refuses an unclaimed origin", async () => {
+    // Given a named environment and an origin outside its simulations.
+    const name = faker.commerce.department();
+    const origin = `https://${faker.internet.domainName()}`;
+    const url = `${origin}/v1/widgets`;
+    using environment = new SimEnvironment({ name });
+    environment.register(
+      `https://${faker.internet.domainName()}`,
+      new SimWidgets(faker.string.uuid()),
+    );
+
+    // When application code sends a request to the unclaimed origin.
+    const error = await assertThrowsErrorAsync(() => fetch(url));
+
+    // Then the error identifies the environment that refused the request.
+    assertInstanceOf(error, TypeError);
+    assertInstanceOf(error.cause, UnclaimedOriginError);
+    assertIdentical(
+      error.cause.message,
+      `GET ${url} reached SimEnvironment (${name}), but no simulated service is registered for origin ${origin}.`,
+    );
+  });
+
   it("passes an unclaimed request through when asked", async () => {
     // Given an environment whose unhandled-request policy permits the network.
     const responseBody = faker.string.uuid();
@@ -232,8 +255,29 @@ describe("a simulation environment", () => {
     });
 
     // Then the environment reports the ambiguous registration.
-    assertStringIncludes(error.message, "already registered");
-    assertStringIncludes(error.message, origin);
+    assertIdentical(
+      error.message,
+      `A simulated service is already registered for ${origin}.`,
+    );
+  });
+
+  it("names itself when it already has a service for an origin", () => {
+    // Given a named environment with a simulated service.
+    const name = faker.commerce.department();
+    const origin = `https://${faker.internet.domainName()}`;
+    using environment = new SimEnvironment({ name });
+    environment.register(origin, new SimWidgets(faker.string.uuid()));
+
+    // When another service is registered for the same origin.
+    const error = assertThrowsError(() => {
+      environment.register(origin, new SimWidgets(faker.string.uuid()));
+    });
+
+    // Then the error identifies the environment with the registration.
+    assertIdentical(
+      error.message,
+      `A simulated service is already registered for ${origin} in SimEnvironment (${name}).`,
+    );
   });
 
   it("rejects an origin owned by another live environment", async () => {
@@ -252,12 +296,35 @@ describe("a simulation environment", () => {
 
     // Then the conflict is explicit, and disposal releases the origin for the
     // second environment.
-    assertStringIncludes(error.message, "Another active SimEnvironment");
+    assertIdentical(
+      error.message,
+      `Another active SimEnvironment is already registered for ${origin}.`,
+    );
     firstEnvironment.dispose();
     secondEnvironment.register(origin, new SimWidgets(secondBody));
     assertIdentical(
       await fetch(origin).then((response) => response.text()),
       secondBody,
+    );
+  });
+
+  it("names the live environment that owns an origin", () => {
+    // Given a named environment that owns an origin.
+    const name = faker.commerce.department();
+    const origin = `https://${faker.internet.domainName()}`;
+    using firstEnvironment = new SimEnvironment({ name });
+    using secondEnvironment = new SimEnvironment();
+    firstEnvironment.register(origin, new SimWidgets(faker.string.uuid()));
+
+    // When another live environment claims the same origin.
+    const error = assertThrowsError(() => {
+      secondEnvironment.register(origin, new SimWidgets(faker.string.uuid()));
+    });
+
+    // Then the error identifies the environment that owns the origin.
+    assertIdentical(
+      error.message,
+      `Another active SimEnvironment (${name}) is already registered for ${origin}.`,
     );
   });
 
@@ -274,7 +341,29 @@ describe("a simulation environment", () => {
     });
 
     // Then the environment reports its completed lifecycle.
-    assertStringIncludes(error.message, "disposed SimEnvironment");
+    assertIdentical(
+      error.message,
+      `Cannot register ${origin} with a disposed SimEnvironment.`,
+    );
+  });
+
+  it("names a disposed environment", () => {
+    // Given a named environment that has released its process resources.
+    const name = faker.commerce.department();
+    const origin = `https://${faker.internet.domainName()}`;
+    using environment = new SimEnvironment({ name });
+    environment.dispose();
+
+    // When a service is registered after disposal.
+    const error = assertThrowsError(() => {
+      environment.register(origin, new SimWidgets(faker.string.uuid()));
+    });
+
+    // Then the error identifies the disposed environment.
+    assertIdentical(
+      error.message,
+      `Cannot register ${origin} with a disposed SimEnvironment (${name}).`,
+    );
   });
 
   it("accepts HTTP origins only", () => {
