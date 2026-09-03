@@ -97,6 +97,9 @@ Only one active environment can own an origin. A second registration for the
 same origin throws an error. Disposal releases the origin for another
 environment.
 
+Set the optional `name` property to identify the environment in registration
+and disposal errors when a process has several environments.
+
 Different active environments can own different origins. Their registered
 services and state stay separate.
 
