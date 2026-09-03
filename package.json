@@ -1,6 +1,6 @@
 {
   "name": "@kensio/simnaril",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "In-process simulation of third-party HTTP services",
   "repository": "https://github.com/KensioSoftware/simnaril",
   "bugs": "https://github.com/KensioSoftware/simnaril/issues",
