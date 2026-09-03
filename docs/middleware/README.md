@@ -67,9 +67,14 @@ belong to a resource.
 Middleware at the same scope runs in registration order on the way in and
 reverse registration order on the way out.
 
-Register `replayIdempotentRequests()` before response-changing API middleware.
-It then captures the response after those later middleware functions have made
-their changes. See [Idempotent requests](../idempotent-requests/README.md).
+Register `replayIdempotentRequests()` before API middleware that reads
+`request.body`. A middleware registered earlier can consume the shared body.
+The replay middleware then cannot call `request.clone()` because the request is
+already disturbed.
+
+Register it before response-changing API middleware too. It then captures the
+response after those later middleware functions have made their changes. See
+[Idempotent requests](../idempotent-requests/README.md).
 
 ## Return a response early
 

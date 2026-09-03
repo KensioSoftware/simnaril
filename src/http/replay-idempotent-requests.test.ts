@@ -94,6 +94,48 @@ describe("replaying idempotent HTTP requests", () => {
     );
   });
 
+  it("fingerprints before later middleware consumes the request body", async () => {
+    // Given replay middleware registered before middleware that reads the body.
+    const api = new SimApi();
+    const key = faker.string.uuid();
+    const url = "https://api.example.test/charges";
+    const requestBody = JSON.stringify({ amount: faker.number.int() });
+    api.use(replayIdempotentRequests());
+    api.use(async ({ request: received }, next) => {
+      const receivedBody = await received.text();
+      const response = await next();
+      response.headers.set("x-request-body", receivedBody);
+      return response;
+    });
+    api.operation("POST", "/charges", () => new Response("created"));
+
+    // When the request is completed and then repeated.
+    const first = await api.handle(request(url, key, { body: requestBody }));
+    const replayed = await api.handle(request(url, key, { body: requestBody }));
+
+    // Then the later middleware reads the body and its response is replayed.
+    assertIdentical(first.headers.get("x-request-body"), requestBody);
+    assertIdentical(replayed.headers.get("x-request-body"), requestBody);
+    assertIdentical(await replayed.text(), await first.text());
+  });
+
+  it("treats absent and empty request bodies as the same body", async () => {
+    // Given a completed request without a body.
+    const api = new SimApi();
+    const key = faker.string.uuid();
+    const url = "https://api.example.test/charges";
+    api.use(replayIdempotentRequests());
+    api.operation("POST", "/charges", () => new Response("created"));
+    const first = await api.handle(request(url, key));
+
+    // When the key is repeated with an explicit empty body.
+    const replayed = await api.handle(request(url, key, { body: "" }));
+
+    // Then the completed response is replayed.
+    assertResponseStatus(replayed, 200);
+    assertIdentical(await replayed.text(), await first.text());
+  });
+
   it("refuses a key reused across a method, path, query or body", async () => {
     // Given a completed request and operations for every comparison case.
     const api = new SimApi();

@@ -8,7 +8,7 @@ export interface ReplayIdempotentRequestsProps {
 }
 
 interface RequestFingerprint {
-  body: Uint8Array | undefined;
+  body: Uint8Array;
   method: string;
   pathname: string;
   search: string;
@@ -19,19 +19,12 @@ interface AnsweredRequest {
   response: Response;
 }
 
-const readBody = async (request: Request): Promise<Uint8Array | undefined> =>
+const readBody = async (request: Request): Promise<Uint8Array> =>
   request.body === null
-    ? undefined
+    ? new Uint8Array()
     : new Uint8Array(await request.clone().arrayBuffer());
 
-const bodyEquals = (
-  first: Uint8Array | undefined,
-  second: Uint8Array | undefined,
-): boolean => {
-  if (first === undefined || second === undefined) {
-    return first === second;
-  }
-
+const bodyEquals = (first: Uint8Array, second: Uint8Array): boolean => {
   if (first.byteLength !== second.byteLength) {
     return false;
   }
