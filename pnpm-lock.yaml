@@ -20,7 +20,7 @@ importers:
         version: 1.10.1
       '@kensio/smartass':
         specifier: ^1.37.6
-        version: 1.38.0
+        version: 1.40.0
       '@semantic-release/exec':
         specifier: 7.1.0
         version: 7.1.0(semantic-release@25.0.9(@typescript/typescript6@6.0.2)(supports-color@7.2.0))(supports-color@7.2.0)
@@ -119,8 +119,8 @@ packages:
     resolution: {integrity: sha512-P/qUVhAaMF98uZ4NsSfiEp5WhfCRSN44nGQDgGY8MA6w9CkCVs4IdxguPGfK7+qNBCViK/xXN/gpj099YiSf1A==}
     engines: {node: '>=22.0.0'}
 
-  '@kensio/smartass@1.38.0':
-    resolution: {integrity: sha512-iaDHZ71Aqy33Kc8llyBLI/+Uh/UxNe6BUXKwsmZvBHVOS+Zouo+78rNIvu3ekjW1PFtta8K+zinXXph7eQ81Og==}
+  '@kensio/smartass@1.40.0':
+    resolution: {integrity: sha512-GdqrDJBlUpHywDXwXcwazYCbwiR6MBGRVW5ZyGcWChbPqE27iDufPNNQNzC/DOp8d1mJmhW6OY4Ou56cTiLRqg==}
     engines: {node: '>=24.0.0'}
 
   '@mswjs/interceptors@0.42.3':
@@ -2256,7 +2256,7 @@ snapshots:
 
   '@kensio/part-factory@1.10.1': {}
 
-  '@kensio/smartass@1.38.0': {}
+  '@kensio/smartass@1.40.0': {}
 
   '@mswjs/interceptors@0.42.3(supports-color@7.2.0)':
     dependencies:
