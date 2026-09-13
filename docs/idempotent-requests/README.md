@@ -17,6 +17,11 @@ const api = new SimApi();
 api.use(replayIdempotentRequests());
 ```
 
+Register authentication before replay middleware. A stored response skips
+later middleware, and headers (including `Authorization`) are outside the
+request fingerprint. See [Middleware](../middleware/README.md#order-authentication-and-idempotency-middleware)
+for the registration order.
+
 The middleware reads `Idempotency-Key` by default. Set `headerName` for a
 service that uses another header:
 

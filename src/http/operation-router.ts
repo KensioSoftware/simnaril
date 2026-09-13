@@ -1,3 +1,4 @@
+import { BearerTokenError } from "../bearer-token-error.js";
 import { DuplicateEntityError } from "../duplicate-entity-error.js";
 import { EntityNotFoundError } from "../entity-not-found-error.js";
 import { IdempotencyKeyReusedError } from "../idempotency-key-reused-error.js";
@@ -98,6 +99,16 @@ export class OperationRouter {
 
       if (formatted !== undefined) {
         return formatted;
+      }
+
+      if (error instanceof BearerTokenError) {
+        return Response.json(
+          { error: error.message },
+          {
+            status: 401,
+            headers: { "WWW-Authenticate": "Bearer" },
+          },
+        );
       }
 
       if (error instanceof EntityNotFoundError) {

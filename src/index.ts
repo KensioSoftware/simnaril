@@ -5,6 +5,11 @@ export {
   type SimService,
   type UnhandledRequestPolicy,
 } from "./environment.js";
+export { BearerTokenError } from "./bearer-token-error.js";
+export {
+  requireBearerToken,
+  type RequireBearerTokenProps,
+} from "./http/require-bearer-token.js";
 export { DuplicateEntityError } from "./duplicate-entity-error.js";
 export { EntityNotFoundError } from "./entity-not-found-error.js";
 export { IdempotencyKeyReusedError } from "./idempotency-key-reused-error.js";
