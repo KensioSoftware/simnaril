@@ -1,11 +1,15 @@
 # Simulation environments
 
-`SimEnvironment` connects production-style HTTP requests to simulated services.
-It owns HTTP interception and the origins registered within it.
+`SimEnvironment` intercepts outgoing HTTP requests and sends them to registered
+simulated services. Application code keeps using its normal URLs and HTTP client.
 
 ## Register a service
 
-Every registered service implements one method:
+Register each service under its HTTP origin, such as
+`https://api.example.com`. The origin can include a port, but must have no
+request path, query string, or fragment.
+
+A service implements one method:
 
 ```ts
 interface SimService {
@@ -13,8 +17,8 @@ interface SimService {
 }
 ```
 
-`SimApi` implements this interface. You can also register a small hand-written
-service when the API and resource model does not suit an endpoint:
+`SimApi` implements this interface. You can also write a service directly when
+you only need a small handler:
 
 ```ts
 import { SimEnvironment, type SimService } from "@kensio/simnaril";
@@ -35,16 +39,23 @@ using environment = new SimEnvironment();
 environment.register("https://status.example.com", healthService);
 ```
 
-One service handles every path at its registered origin. The service receives a
-Web Platform `Request` and returns a `Response`.
+Every request to `https://status.example.com` reaches `healthService`. This
+handler answers `GET /health` with JSON and returns `404` for all other paths
+and methods. The handler controls that behavior.
 
-## Handle requests outside the simulation
+An environment can register several services under different origins.
+Separate active environments can also register different origins, but a second
+registration of the same origin throws an error. Disposing an environment
+releases its origins.
 
-An environment rejects requests to unregistered origins by default. This
-prevents a test from reaching a network service by accident.
+Set the environment's optional `name` to identify it in registration and
+disposal errors when several simulations run in one process.
 
-Node's `fetch()` wraps the Simnaril error in a network error. Inspect `cause` to
-read the original `UnclaimedOriginError`:
+## Control requests to other origins
+
+By default, a request fails if its origin belongs to no active simulation.
+With Node's `fetch()`, the failure is a `TypeError` whose `cause` is an
+`UnclaimedOriginError`:
 
 ```ts
 import { UnclaimedOriginError } from "@kensio/simnaril";
@@ -63,8 +74,8 @@ try {
 }
 ```
 
-Set `unhandledRequest` to `"passthrough"` when the process must also reach real
-network services:
+Set `unhandledRequest` to `"passthrough"` when your application also needs to
+call real services:
 
 ```ts
 using environment = new SimEnvironment({
@@ -72,12 +83,25 @@ using environment = new SimEnvironment({
 });
 ```
 
-Registered origins remain simulated. Requests to other origins pass through to
-the network.
+This environment still handles its registered origins. It allows other
+requests to reach another active simulation or the real network. If another
+active environment uses the default error policy, that environment can still
+block a request to an unregistered origin.
 
-## Dispose the environment
+## Dispose an environment
 
-Dispose the environment as soon as the application has finished using it:
+Use a `using` declaration to keep interception active for the current scope:
+
+```ts
+using environment = new SimEnvironment();
+environment.register("https://api.example.com", api);
+await runApplication();
+```
+
+Here, `api` is your simulated API and `runApplication()` is the application
+work that makes HTTP requests. Await that work before leaving the scope.
+
+If explicit cleanup fits your code better, call `dispose()` in `finally`:
 
 ```ts
 const environment = new SimEnvironment();
@@ -90,23 +114,14 @@ try {
 }
 ```
 
-`dispose()` is safe to call more than once. A disposed environment cannot accept
-new registrations.
+`dispose()` stops this environment's interception and releases its origins.
+Calling it again has no effect. A disposed environment cannot register more
+services.
 
-Only one active environment can own an origin. A second registration for the
-same origin throws an error. Disposal releases the origin for another
-environment.
+## Handle a request directly
 
-Set the optional `name` property to identify the environment in registration
-and disposal errors when a process has several environments.
-
-Different active environments can own different origins. Their registered
-services and state stay separate.
-
-## Call a service without interception
-
-Call `SimApi.handle()` directly when a test only needs the HTTP behavior of one
-API:
+Call `SimApi.handle()` when you want to exercise an API without installing
+HTTP interception:
 
 ```ts
 const response = await api.handle(
@@ -114,6 +129,9 @@ const response = await api.handle(
 );
 ```
 
-Direct handling avoids process-wide HTTP interception. It still runs routing,
-request decoding, middleware, state operations, error translation, and response
-encoding.
+The call runs the API's routing and middleware, decodes the request, runs the
+operation, and produces the response. It uses the same resource state as an
+intercepted request.
+
+The URL supplies the path and query string for routing. A direct call to
+`api.handle()` needs no origin registration.

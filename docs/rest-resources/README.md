@@ -1,9 +1,10 @@
 # REST resources
 
-`api.resource()` creates in-memory state and exposes conventional JSON CRUD
-operations for it.
+`api.resource()` creates a collection of entities in memory and adds HTTP
+routes to read and change them. The returned `RestResource` also exposes state
+methods that tests can call directly.
 
-## Create a REST resource
+## Create a resource
 
 ```ts
 import { SimApi } from "@kensio/simnaril";
@@ -21,10 +22,10 @@ const widgets = api.resource<Widget>({
 });
 ```
 
-The resource path is an absolute collection path. It may contain named path
-parameters. It cannot contain a query string or fragment.
+`path` is the collection path and must start with `/`. It can include named
+parameters, but cannot contain a query string or fragment.
 
-The supplied routes are:
+The resource provides these routes by default:
 
 | Method   | Path           | Request body        | Success response              |
 | -------- | -------------- | ------------------- | ----------------------------- |
@@ -34,16 +35,16 @@ The supplied routes are:
 | `PATCH`  | `/widgets/:id` | JSON partial entity | `200` with the updated entity |
 | `DELETE` | `/widgets/:id` | none                | `204` with no body            |
 
-The `list`, `get`, `update`, and `delete` operations call the corresponding
-state method. The `create` operation calls the resource's configured creation
-behavior.
+Each route calls the corresponding state method. The create route calls
+`create()`, which runs the resource's creation function if one is configured.
+Without a creation function, the caller must supply the complete entity.
 
-JSON is the default for request bodies. [Request bodies](../request-bodies/README.md) covers
-supplying a decoder for a service that takes another format.
+Create and update requests are decoded as JSON by default. For form bodies or
+another input format, see [Request bodies](../request-bodies/README.md).
 
-## Use the state API from tests
+## Arrange and inspect state in tests
 
-The returned `RestResource` delegates every state method:
+Call state methods on the returned resource:
 
 ```ts
 widgets.seed({ id: "widget-1", name: "First", status: "active" });
@@ -56,13 +57,80 @@ widgets.delete("widget-1");
 widgets.clear();
 ```
 
-The same state backs direct method calls and HTTP requests. A change through
-one interface is visible through the other.
+An entity seeded here is available to HTTP requests. An update made over HTTP
+is visible through `get()`. [Resource state](../resource-state/README.md)
+describes each method and its errors.
 
-## Nest a resource under another route
+## Generate fields when an entity is created
 
-A collection path can name its parent resources. `itemPath` is appended for
-the three item operations.
+Pass a `create` function alongside the resource's path:
+
+```ts
+const widgets = api.resource<Widget>({
+  name: "widget",
+  path: "/widgets",
+  create(input) {
+    return {
+      id: crypto.randomUUID(),
+      name: input.name ?? "Untitled widget",
+      status: "active",
+    };
+  },
+});
+```
+
+A `POST /widgets` request can now omit `id`, `name`, and `status`. The creation
+function fills those fields before the entity is stored. Direct calls to
+`widgets.create()` run the same function. Calls to `widgets.seed()` skip it.
+
+## Change a route's method or path
+
+Configure a built-in operation under `operations`:
+
+```ts
+const widgets = api.resource<Widget>({
+  path: "/widgets",
+  operations: {
+    update: {
+      method: "POST",
+      path: "/:id/changes",
+    },
+  },
+});
+```
+
+The update route is now `POST /widgets/:id/changes`. It still decodes JSON,
+updates the stored entity, and returns that entity with status `200`.
+
+Operation paths are appended to the collection path. The operation names are
+`list`, `create`, `get`, `update`, and `delete`. With the default identity
+lookup, paths for get, update, and delete must contain `:id`.
+
+Use a [custom operation](../custom-operations/README.md) when the operation's
+behavior needs to change too.
+
+## Disable routes the service does not support
+
+Set an operation to `false` to omit its route:
+
+```ts
+const widgets = api.resource<Widget>({
+  path: "/widgets",
+  operations: {
+    create: false,
+    update: false,
+    delete: false,
+  },
+});
+```
+
+This resource has only list and get routes. Requests to the omitted create,
+update, or delete routes throw `UnimplementedRouteError`.
+
+## Use parent resources and composite identities
+
+A collection path can contain parameters such as a repository's owner and
+name. `itemPath` supplies the path appended for get, update, and delete:
 
 ```ts
 import { requirePathParameter } from "@kensio/simnaril";
@@ -86,65 +154,37 @@ const issues = api.resource<Issue>({
 });
 ```
 
-This resource supplies collection routes under each repository and item routes
-ending in `/:number`. `identify` turns an entity into its state identity.
-`locate` turns the matched route parameters back into the same identity.
+This creates routes such as
+`GET /repos/kensio/simnaril/issues/42`. The state identity for that issue is
+`kensio/simnaril#42`.
 
-`locate` applies to get, update, and delete. Override list or create when the
-parent parameters change collection behaviour. Their handlers receive the same
-`params` object.
+`identify` converts a stored entity into its state key. `locate` converts
+request path parameters into the same key. The default `locate` reads
+`params.id`, so provide a locator when your route uses another parameter or
+combines several parameters.
 
-The default locator reads `params.id`. Define `locate` when an item route uses
-another parameter or needs more than one value. `requirePathParameter` returns
-a parameter or throws a clear error when the route did not supply it.
+`requirePathParameter()` returns a decoded parameter value. It throws an
+error if the named parameter is absent.
 
-## Leave unsupported operations out
-
-Set a supplied operation to `false` when the simulated service has no such
-route:
-
-```ts
-const widgets = api.resource<Widget>({
-  path: "/widgets",
-  operations: {
-    create: false,
-    update: false,
-    delete: false,
-  },
-});
-```
-
-The example keeps the list and get routes. Requests to the three omitted routes
-throw `UnimplementedRouteError`.
-
-## Configure creation
-
-Pass state options to `api.resource()` along with the HTTP path:
-
-```ts
-const widgets = api.resource<Widget>({
-  name: "widget",
-  path: "/widgets",
-  create(input) {
-    return {
-      id: crypto.randomUUID(),
-      name: input.name ?? "Untitled widget",
-      status: "active",
-    };
-  },
-});
-```
-
-A `POST /widgets` request can now omit the generated and defaulted fields.
+The locator applies to get, update, and delete. The default list operation
+still returns every entity in the resource, and create uses only the request
+body. Override those operations to filter by parent or copy parent parameters
+into a new entity. Their handlers receive the same `params` object.
 
 ## Understand HTTP errors
 
-Simnaril translates state errors for supplied and semantic operations:
+Errors thrown during a matched operation or its middleware can become HTTP
+responses. Simnaril includes these mappings:
 
-- `EntityNotFoundError` becomes `404`.
-- `DuplicateEntityError` becomes `409`.
+| Error                       | Status |
+| --------------------------- | ------ |
+| `EntityNotFoundError`       | `404`  |
+| `DuplicateEntityError`      | `409`  |
+| `IdempotencyKeyReusedError` | `422`  |
 
-The response body contains an `error` property with the domain error message:
+The last mapping applies when you use the
+[idempotency middleware](../idempotent-requests/README.md). Each default error
+response is JSON with an `error` property containing the error message:
 
 ```json
 {
@@ -152,27 +192,27 @@ The response body contains an `error` property with the domain error message:
 }
 ```
 
-An unmatched method or path throws `UnimplementedRouteError`. A missing entity
-on a known route returns a normal simulated `404`. This distinction makes an
-unfinished simulation visible during development.
+A request for a missing entity on a registered route returns a simulated
+`404`. A method or path with no registered route throws
+`UnimplementedRouteError`. Implement that route if the application is
+expected to call it.
 
-Node's `fetch()` wraps an `UnimplementedRouteError` in a `TypeError`. The
-original error is available as `error.cause`.
+Node's `fetch()` wraps an `UnimplementedRouteError` in a `TypeError`. Read
+`error.cause` for the original error.
 
-Give the API a name when a simulation contains several services:
+Give an API a name to identify it in route errors:
 
 ```ts
 const api = new SimApi({ name: "GitHub" });
 ```
 
-An unknown route then reports that it reached `GitHub`. The default name is
+An unmatched request now reports that it reached `GitHub`. The default name is
 `SimApi`.
 
-## Shape the errors one API answers with
+## Customize error responses
 
-A real service has one error envelope across every endpoint. Stripe's is
-`{ error: { type, code, message, param } }` and GitHub's is
-`{ message, documentation_url }`. Describe the shape once, on the API.
+Set `formatError` on the API when the service uses a particular error body or
+status:
 
 ```ts
 import { EntityNotFoundError, SimApi } from "@kensio/simnaril";
@@ -191,40 +231,13 @@ const api = new SimApi({
 });
 ```
 
-The formatter runs before the two supplied mappings, so it shapes
-`EntityNotFoundError` and `DuplicateEntityError` as well as anything the
-simulation raises on its own behalf. Return `undefined` to decline an error and
-leave it to them.
+This formatter changes the response for a missing entity to the nested
+`error` object shown in the example. It applies across the API's matched
+operations and middleware.
 
-An error nothing shapes still escapes as a thrown error, the way it does today.
-A simulation that has not been taught about a failure says so, in place of
-answering `500` and hiding it.
+The formatter runs before the default mappings. Return a `Response` to handle
+an error, or `undefined` to use the defaults. An error that neither the
+formatter nor a default mapping handles is thrown to the caller.
 
-## Move a supplied route
-
-Configure the method, resource-relative path, or both under `operations`:
-
-```ts
-const widgets = api.resource<Widget>({
-  path: "/widgets",
-  operations: {
-    update: {
-      method: "POST",
-      path: "/:id/changes",
-    },
-  },
-});
-```
-
-This changes the update route to `POST /widgets/:id/changes`. Its JSON decoding,
-state behavior, error translation, status, and response encoding remain the
-same.
-
-The supplied operation names are `list`, `create`, `get`, `update`, and
-`delete`. Configured paths for `get`, `update`, and `delete` must include an
-`:id` parameter when the resource uses the default locator. A configured
-`locate` function can use any parameters present in the collection and item
-paths.
-
-Read [Custom operations](../custom-operations/README.md) when a route needs
-different behavior.
+Unmatched routes throw before this formatting step. A formatter cannot turn
+an unimplemented route into an HTTP error response.
