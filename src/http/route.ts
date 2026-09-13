@@ -15,15 +15,20 @@ export function compileRoute(
   validateOperationPath(path);
   const segments = path === "/" ? [] : path.slice(1).split("/");
   const parameterNames = new Set<string>();
+  const parameters = new Map<string, { name: string; suffix: string }>();
+  let suffixLength = 0;
 
   for (const segment of segments) {
     if (!segment.startsWith(":")) {
       continue;
     }
 
-    const name = segment.slice(1);
+    const parsed = /^:([A-Za-z_][A-Za-z\d_]*)(:[A-Za-z_][A-Za-z\d_]*)?$/u.exec(
+      segment,
+    );
+    const name = parsed?.[1];
 
-    if (!/^[A-Za-z_][A-Za-z\d_]*$/u.test(name)) {
+    if (name === undefined) {
       throw new TypeError(
         `Expected a named path parameter such as ":id", received "${segment}".`,
       );
@@ -33,7 +38,10 @@ export function compileRoute(
       throw new TypeError(`Path parameter ":${name}" appears more than once.`);
     }
 
+    const suffix = parsed?.[2] ?? "";
     parameterNames.add(name);
+    parameters.set(segment, { name, suffix });
+    suffixLength += suffix.length;
   }
 
   for (const name of requiredParameters) {
@@ -45,15 +53,15 @@ export function compileRoute(
   }
 
   const literalSegments = segments.filter(
-    (segment) => !segment.startsWith(":"),
-  ).length;
-  const literalLength = segments
-    .filter((segment) => !segment.startsWith(":"))
-    .join("/").length;
+    (segment) => !parameters.has(segment),
+  );
 
   return {
     specificity:
-      literalSegments * 1_000_000 + segments.length * 1000 + literalLength,
+      literalSegments.length * 1_000_000 +
+      segments.length * 1000 +
+      literalSegments.join("/").length +
+      suffixLength,
     match: (pathname): RouteMatch | undefined => {
       const candidateSegments =
         pathname === "/" ? [] : pathname.slice(1).split("/");
@@ -71,15 +79,26 @@ export function compileRoute(
           return undefined;
         }
 
-        if (!segment.startsWith(":")) {
+        const parameter = parameters.get(segment);
+
+        if (parameter === undefined) {
           if (candidate !== segment) {
             return undefined;
           }
           continue;
         }
 
+        if (
+          !candidate.endsWith(parameter.suffix) ||
+          candidate.length <= parameter.suffix.length
+        ) {
+          return undefined;
+        }
+
         try {
-          params[segment.slice(1)] = decodeURIComponent(candidate);
+          params[parameter.name] = decodeURIComponent(
+            candidate.slice(0, candidate.length - parameter.suffix.length),
+          );
         } catch {
           return undefined;
         }
