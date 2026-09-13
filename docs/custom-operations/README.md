@@ -143,7 +143,7 @@ report.use(async (_context, next) => {
 
 ## Use path parameters
 
-A parameter starts with `:` and occupies one path segment:
+A parameter starts with `:` and captures one path segment:
 
 ```ts
 api.operation("GET", "/repositories/:owner/:repository", ({ params }) => {
@@ -161,3 +161,33 @@ Parameter names start with a letter or underscore and can also contain
 digits. Each name can appear only once in a path. Parameter values are
 URL-decoded before the handler receives them. Use `requirePathParameter()`
 when you want an error if a required parameter is missing.
+
+A parameter can also end with a literal `:<verb>` suffix, as used by
+[Google custom methods](https://google.aip.dev/136):
+
+```ts
+api.operation(
+  "POST",
+  "/v1/projects/-/serviceAccounts/:email:generateAccessToken",
+  ({ params }) => {
+    const email = requirePathParameter(params, "email");
+    return Response.json({ accessToken: `token-for-${email}` });
+  },
+);
+```
+
+A request for `/v1/projects/-/serviceAccounts/service%40example.com:generateAccessToken`
+supplies `email` as `"service@example.com"`. The parameter captures everything
+before the suffix within that segment. The suffix matches literally, including
+case. Verb names follow the same naming rules as parameters.
+
+The captured value must be nonempty. A parameter never spans a literal `/`.
+Percent-encoded values are decoded once after matching, including an encoded
+slash. A different verb or malformed percent encoding leaves the route
+unmatched.
+
+When routes overlap, a fully literal path takes priority over a parameterized
+path. A parameter with a method suffix takes priority over a whole-segment
+parameter in the same position. These priorities apply in either registration
+order. Custom-method paths also work in resource actions and configured
+built-in operations (for example, `path: "/:id:archive"`).
