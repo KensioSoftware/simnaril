@@ -77,26 +77,71 @@ response body.
 Raw API operations have API and operation middleware. They have no resource
 middleware. A request with no matching route throws before middleware runs.
 
-## Reject a request before it reaches the operation
+## Require a bearer token
 
-Return a response directly to stop the request:
+Use `requireBearerToken()` to check the `Authorization` header before an
+operation runs:
 
 ```ts
-const requireAuthorization: HttpMiddleware = ({ request }, next) => {
-  if (request.headers.get("authorization") !== "Bearer test-token") {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+import { requireBearerToken } from "@kensio/simnaril";
 
-  return next();
-};
+api.use(requireBearerToken({ token: "test-token" }));
 ```
 
-With `widgets.use(requireAuthorization)`, a request with the wrong token
-receives `401`, and the resource operation does not run.
+The expected token belongs to this middleware instance. Different APIs can
+require different tokens. You can also register it on a resource or an
+individual operation with `use()`.
 
-For a simulation whose tokens can be revoked, keep token state in an explicit
-object and let the middleware read it. Tests can change that state to cause
-authorization failures.
+The middleware accepts the `Bearer` scheme in any letter case and compares
+the token exactly (including case). It follows the bearer credential grammar
+in [RFC 6750, section 2.1](https://www.rfc-editor.org/rfc/rfc6750.html#section-2.1).
+The separator is one or more ASCII spaces. Tokens contain ASCII letters,
+digits, `-`, `.`, `_`, `~`, `+`, or `/`, with optional `=` padding at the end.
+Empty tokens, tabs between the scheme and token, embedded whitespace,
+quoted tokens, and combined credentials are refused.
+
+`Request` and `Headers` remove surrounding HTTP whitespace before middleware
+runs. A header constructed as `"Bearer test-token "` reaches the middleware as
+`"Bearer test-token"`. This follows
+[HTTP field-value parsing](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.5).
+The middleware validates the normalized value it receives.
+
+Missing, malformed, or mismatched credentials produce `BearerTokenError`
+with a `reason` of `"missing"`, `"malformed"`, or `"mismatch"`. The default
+response has status `401`, a `WWW-Authenticate: Bearer` header, and a JSON
+`{ error }` body. Error messages omit both the supplied and expected tokens.
+The operation stays unexecuted, and its request body stays unread.
+
+Pass `formatError` to shape the refusal for your simulated service:
+
+```ts
+import { BearerTokenError, type ErrorFormatter } from "@kensio/simnaril";
+
+const googleError: ErrorFormatter = (error) =>
+  error instanceof BearerTokenError
+    ? Response.json(
+        {
+          error: {
+            code: 401,
+            message: error.message,
+            status: "UNAUTHENTICATED",
+          },
+        },
+        { status: 401, headers: { "WWW-Authenticate": "Bearer" } },
+      )
+    : undefined;
+
+api.use(requireBearerToken({ token: "test-token", formatError: googleError }));
+```
+
+This example replaces the earlier `api.use()` call. The formatter controls
+the complete response. Returning `undefined` leaves the error to the API's
+`formatError` callback, then Simnaril's default mapping. You can configure
+only the API formatter when every operation shares the same error envelope.
+
+This middleware checks one fixed token. Token issuance, expiry, scopes and
+OAuth flows belong to the simulated service. For revocation or rotating
+tokens, write middleware that reads an explicit object holding token state.
 
 ## Change the response
 
@@ -132,9 +177,23 @@ The example leaves unsuccessful responses unchanged. Its new response copies
 the status. Copy any other headers your simulated service needs when you
 replace a response.
 
-## Register idempotency middleware first
+## Order authentication and idempotency middleware
 
-When using `replayIdempotentRequests()`, register it before API middleware
+Register authentication before `replayIdempotentRequests()` to check every
+request, including retries that receive a stored response:
+
+```ts
+import { replayIdempotentRequests } from "@kensio/simnaril";
+
+api.use(requireBearerToken({ token: "test-token" }));
+api.use(replayIdempotentRequests());
+```
+
+Use this order when constructing the API. Replay can answer without running
+later middleware, so authentication registered after replay would be skipped
+for a stored response.
+
+Register `replayIdempotentRequests()` before API middleware
 that reads the request body. The replay middleware clones the request, which
 fails if an earlier middleware has already consumed the body.
 
