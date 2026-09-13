@@ -1,14 +1,15 @@
 # Composing a simulation
 
-Define a simulated service in a factory function. The function constructs the
-environment, APIs, resources, middleware, and operations as one object graph.
+Use a factory function to construct the simulated services your application
+needs. Each call creates a new environment and new resource state. Tests
+reuse the definition and arrange their own data.
 
-## Build a composition root
+## Put service definitions in a factory
 
-This example defines two services that share one environment:
+This example creates billing and source-control services in one environment:
 
 ```ts
-import { SimApi, SimEnvironment, type RestResource } from "@kensio/simnaril";
+import { SimApi, SimEnvironment } from "@kensio/simnaril";
 
 interface Customer {
   id: string;
@@ -20,19 +21,7 @@ interface Issue {
   title: string;
 }
 
-interface ApplicationSim extends Disposable {
-  billing: {
-    api: SimApi;
-    customers: RestResource<Customer>;
-  };
-  environment: SimEnvironment;
-  sourceControl: {
-    api: SimApi;
-    issues: RestResource<Issue>;
-  };
-}
-
-export function createApplicationSim(): ApplicationSim {
+export function createApplicationSim() {
   const environment = new SimEnvironment();
 
   const billingApi = new SimApi();
@@ -61,10 +50,17 @@ export function createApplicationSim(): ApplicationSim {
 }
 ```
 
-The returned object gives tests direct access to the state they arrange and
-inspect. Application code reaches the same state through HTTP.
+The factory defines the routes and registers each API under its production
+origin. Application requests to those origins reach the matching API.
 
-## Arrange state in a test
+The returned object gives tests access to the resources through
+`sim.billing.customers` and `sim.sourceControl.issues`. Its `Symbol.dispose`
+method releases the environment when a `using sim` scope ends.
+
+## Arrange state and run the application
+
+Create the simulation, seed the data the application needs, then call the
+application:
 
 ```ts
 using sim = createApplicationSim();
@@ -85,27 +81,42 @@ const customer = sim.billing.customers.get("customer-1");
 const issues = sim.sourceControl.issues.list();
 ```
 
-Construct a fresh graph for each test or test worker. Fresh resources provide
-state isolation without shared setup and cleanup.
+`runApplication()` stands for your application code, which makes its ordinary
+HTTP requests. After it completes, inspect the resources to check the effects
+of those requests.
 
-## Define baseline state
+Create a fresh simulation for each test. Dispose it before another test in
+the same Node.js process registers the same origins. Tests in separate
+processes can each use those origins.
 
-Seed state inside the factory when every new simulation should start with it:
+## Give each simulation the same starting data
+
+Seed data inside the factory when every test needs it. For example, add these
+plans after constructing `billingApi` and before returning the simulation:
 
 ```ts
+interface Plan {
+  id: string;
+  name: string;
+}
+
 const plans = billingApi.resource<Plan>({ path: "/v1/plans" });
 
 plans.seed({ id: "free", name: "Free" });
 plans.seed({ id: "business", name: "Business" });
 ```
 
-Each call to the factory creates that baseline in new resource instances.
-Tests can add or change state without affecting another simulation.
+Each factory call creates its own plan entities. A test can change them
+without affecting the next simulation. To expose `plans` to tests, include
+it in the returned `billing` object alongside `customers`.
 
-## Share state between HTTP representations
+Create a new simulation to restore this starting state. `SimResource.clear()`
+empties one resource. It does not restore entities seeded by the factory.
 
-Create a `SimResource` separately when two API versions or services expose the
-same domain state:
+## Share state between API versions
+
+Construct a `SimResource` separately when two APIs should expose the same
+entities:
 
 ```ts
 import { SimApi, SimResource } from "@kensio/simnaril";
@@ -127,18 +138,20 @@ v1Widgets.seed({ id: "widget-1", name: "First widget" });
 v2Widgets.get("widget-1");
 ```
 
-Both `RestResource` objects delegate to `state`. An HTTP update through either
-API is visible through both representations.
+Both returned `RestResource` objects use `state`. Seeding through `v1Widgets`
+makes the entity available through `v2Widgets`. HTTP requests handled by
+either API read and update the same entities.
 
-## Keep service behavior together
+Each API still has its own routes and middleware. This example changes only
+the URL paths. Use custom operations when the API versions also need different
+request or response formats.
 
-The factory is the definition of the simulated world. Put route definitions,
-creation behavior, middleware, and baseline state there. Tests should usually
-work with the returned state methods.
+## Keep definitions separate from test setup
 
-A test can then read in four steps:
+Put route definitions, creation functions, middleware, and shared starting
+data in the factory. A test then creates a simulation, arranges its resource
+state, runs application code, and checks the resulting state.
 
-1. Create the simulation.
-2. Arrange its state.
-3. Run the application.
-4. Inspect the resulting state.
+When a test needs a service to fail, change the state that causes the failure.
+For example, revoke a token that the authentication middleware reads. Keep
+that behavior in the service definition where all tests can use it.

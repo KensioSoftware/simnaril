@@ -1,12 +1,41 @@
 # Custom operations
 
-Simnaril provides three ways to go beyond the supplied REST behavior. Choose
-the smallest change that matches the service.
+Customize an operation when a service needs behavior beyond the built-in REST
+routes. Simnaril lets you replace a route's handler, add an action to a
+resource, or handle a request directly.
 
-## Override a supplied operation
+## Choose how to customize an operation
 
-Use `override()` when the route and response format are suitable but the
-resource behavior differs.
+| What you need                                             | API to use                                                                  |
+| --------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Change a built-in route's method or path                  | Resource `operations` configuration                                         |
+| Change what a built-in operation does                     | `resource.operations.create.override()` or another operation's `override()` |
+| Add an action such as archive or cancel                   | `resource.operation()`                                                      |
+| Read the request and build the complete response yourself | `api.operation()`                                                           |
+
+[REST resources](../rest-resources/README.md) covers method and path
+configuration. The examples below start with this API and resource:
+
+```ts
+import { SimApi } from "@kensio/simnaril";
+
+interface Widget {
+  id: string;
+  name: string;
+  status: "active" | "archived";
+}
+
+const api = new SimApi();
+const widgets = api.resource<Widget>({ path: "/widgets" });
+```
+
+Define these operations while constructing the simulation. Tests can then
+arrange resource state and call the application.
+
+## Replace a built-in operation's handler
+
+Use `override()` to change what an operation does while keeping its route,
+request decoding, and response format:
 
 ```ts
 widgets.operations.create.override({
@@ -23,17 +52,20 @@ widgets.operations.create.override({
 });
 ```
 
-The handler receives decoded `input`, the `resource`, the original `request`,
-path `params`, and parsed `query` parameters.
+Here, creation uses a request header for the ID when one is present. It also
+uses the `prefix` query parameter to build a default name.
 
-The supplied HTTP pipeline remains active. For the create operation, Simnaril
-still decodes JSON, translates resource errors, returns status `201`, and
-encodes the result as JSON.
+The handler receives the decoded `input` and the `resource`. It also receives
+HTTP context through `request`, `params`, and `query`.
 
-## Add a resource operation
+Return the value that should become the response body. For this create
+operation, Simnaril encodes that value as JSON with status `201`. The API's
+error handling still applies.
 
-Use `resource.operation()` for an action that belongs to a resource, such as
-archiving a widget:
+## Add an action to a resource
+
+Use `resource.operation()` for an action on a resource, such as archiving a
+widget:
 
 ```ts
 import { requirePathParameter } from "@kensio/simnaril";
@@ -49,23 +81,33 @@ const archive = widgets.operation<{ reason: string }, Widget>("archive", {
 });
 ```
 
-The path is relative to the resource collection, so this example handles
-`POST /widgets/:id/archive`.
+The path is appended to `/widgets`, giving
+`POST /widgets/:id/archive`. A caller sends a JSON body such as
+`{"reason":"No longer needed"}`. The handler updates the stored widget and
+returns it.
 
-When a request has a body, Simnaril decodes it as JSON and passes it as `input`.
-A returned value becomes a JSON response with status `200`. Returning
+The type arguments describe the decoded input and returned value. They do
+not validate the request body at runtime. Validate input in the handler or a
+custom decoder if the simulation needs to reject invalid requests.
+
+By default, Simnaril decodes a body as JSON and passes it as `input`. It uses
+a configured decoder when one is supplied. A bodyless request passes
+`undefined`. Returning a value produces JSON with status `200`. Returning
 `undefined` produces status `204` with no body.
 
-The method returns a semantic operation object. Use it to attach middleware to
-that operation:
+The returned operation has a `use()` method for
+[middleware](../middleware/README.md):
 
 ```ts
-archive.use(recordArchiveRequest);
+archive.use(async ({ request }, next) => {
+  console.log(request.method, request.url);
+  return next();
+});
 ```
 
-## Add a raw HTTP operation
+## Handle the request and response directly
 
-Use `api.operation()` when the handler needs direct control of the response:
+Use `api.operation()` when you need to build the complete `Response`:
 
 ```ts
 const report = api.operation(
@@ -84,17 +126,22 @@ const report = api.operation(
 );
 ```
 
-Raw operation paths are absolute API paths. Simnaril matches the method and
-path, decodes named path parameters, and supplies the parsed query string. The
-handler builds the complete `Response`.
+A raw operation's path starts at the API root. Simnaril matches the method
+and path, decodes path parameters, and supplies `query` as `URLSearchParams`.
+The handler reads any request body and returns the response, including its
+status and headers.
 
-Raw operations can also use operation middleware:
+Raw operations also support middleware:
 
 ```ts
-report.use(addReportHeaders);
+report.use(async (_context, next) => {
+  const response = await next();
+  response.headers.set("x-report-version", "1");
+  return response;
+});
 ```
 
-## Work with path parameters
+## Use path parameters
 
 A parameter starts with `:` and occupies one path segment:
 
@@ -107,13 +154,10 @@ api.operation("GET", "/repositories/:owner/:repository", ({ params }) => {
 });
 ```
 
-Parameter names may contain letters, digits, and underscores. The first
-character must be a letter or underscore. Each name can appear once in a path.
-Simnaril decodes parameter values before passing them to the handler.
+For `/repositories/kensio/simnaril`, the handler receives `owner` as `"kensio"`
+and `repository` as `"simnaril"`.
 
-## Choose an operation type
-
-Use route configuration when the supplied behavior only has the wrong method
-or path. Use a semantic override when the supplied HTTP behavior is correct.
-Add a resource operation for a named action on a resource. Add a raw operation
-when the handler must build its own `Response`.
+Parameter names start with a letter or underscore and can also contain
+digits. Each name can appear only once in a path. Parameter values are
+URL-decoded before the handler receives them. Use `requirePathParameter()`
+when you want an error if a required parameter is missing.

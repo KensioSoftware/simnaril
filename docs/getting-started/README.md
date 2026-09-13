@@ -1,23 +1,21 @@
 # Getting started
 
-This guide builds a small simulation and runs ordinary application code against
-it.
+Build a simulated API, add a widget to its state, and call it with `fetch()`.
+The request runs inside Node.js and reads the state you created.
 
 ## Install Simnaril
 
-Install the package with your package manager:
+Simnaril requires Node.js 24 or later. Install it as a development dependency
+for tests and local development:
 
 ```sh
 pnpm add -D @kensio/simnaril
 ```
 
-Simnaril requires Node.js 24 or later. It is usually a development dependency
-because the simulation runs in tests and local development.
+## Create an API and resource
 
-## Define a resource
-
-A `SimApi` represents one HTTP service. Its resources hold the simulated
-service's state and expose that state over HTTP.
+A `SimApi` represents one HTTP service. Call `api.resource()` to create a
+collection of widgets and expose HTTP routes for it:
 
 ```ts
 import { SimApi } from "@kensio/simnaril";
@@ -35,13 +33,13 @@ const widgets = api.resource<Widget>({
 });
 ```
 
-The returned `widgets` object has two roles. It provides direct methods for
-changing and inspecting state, and it exposes the usual JSON CRUD routes below
-`/v1/widgets`.
+`widgets` holds the stored entities. It also handles requests such as
+`GET /v1/widgets` and `PATCH /v1/widgets/:id`. Tests can read and change the
+same entities through methods on `widgets`.
 
-## Arrange the simulated state
+## Add test data
 
-Use `seed()` to put an exact entity into the simulation:
+Call `seed()` with the complete entity you want in the simulation:
 
 ```ts
 widgets.seed({
@@ -51,13 +49,13 @@ widgets.seed({
 });
 ```
 
-`seed()` is intended for test arrangement. It preserves the entity you pass to
-it without applying service creation behavior.
+`seed()` stores this entity as supplied. It skips any creation function that
+the simulated service would normally run to generate IDs or apply defaults.
 
-## Register the API
+## Connect application requests to the API
 
-A `SimEnvironment` intercepts HTTP requests. Register the API under the same
-origin that the application uses in production:
+Register the API with a `SimEnvironment` using the origin your application
+calls in production:
 
 ```ts
 import { SimEnvironment } from "@kensio/simnaril";
@@ -66,15 +64,17 @@ using environment = new SimEnvironment();
 environment.register("https://api.example.com", api);
 ```
 
-Registration takes an origin such as `https://api.example.com`. Do not include
-a path, query string, or fragment.
+An origin contains a scheme and host, plus a port if needed. Pass
+`https://api.example.com`, without a request path, query string, or fragment.
+The API's resource paths supply the rest of each URL.
 
-The `using` declaration disposes the environment when the current scope ends.
-Disposal removes its interception and releases its registered origins.
+The `using` declaration calls `environment.dispose()` when the current scope
+ends. Until then, requests to this origin go to `api`. Requests to origins
+outside every active simulation fail by default.
 
-## Run the application
+## Read and update the widget
 
-The application continues to use its normal URL and HTTP client:
+The application uses an ordinary HTTP request:
 
 ```ts
 const response = await fetch("https://api.example.com/v1/widgets/widget-1");
@@ -86,26 +86,36 @@ if (!response.ok) {
 const widget = (await response.json()) as Widget;
 ```
 
-The request stays in the Node.js process. `SimEnvironment` sends it to the
-registered `SimApi`, which reads the entity from `widgets` and returns a normal
-`Response`.
+`SimEnvironment` passes the request to `api`. The API reads `widget-1` from
+`widgets` and returns it as JSON in a `Response`.
 
-Changes made through HTTP remain in the resource state:
+An application function can update that same entity over HTTP:
 
 ```ts
-await fetch("https://api.example.com/v1/widgets/widget-1", {
-  body: JSON.stringify({ status: "archived" }),
-  headers: { "content-type": "application/json" },
-  method: "PATCH",
-});
+async function archiveWidget(id: string): Promise<void> {
+  const response = await fetch(`https://api.example.com/v1/widgets/${id}`, {
+    body: JSON.stringify({ status: "archived" }),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
 
+  if (!response.ok) {
+    throw new Error(`Unexpected response ${response.status}`);
+  }
+}
+
+await archiveWidget("widget-1");
 console.log(widgets.get("widget-1").status); // "archived"
 ```
 
-## Use a fresh simulation in each test
+This `archiveWidget()` function is application code. It needs no reference to
+the simulation. After the request completes, the state method `widgets.get()`
+returns the updated entity.
 
-Put the definition in a function when several tests use the same simulated
-service:
+## Reuse the definition across tests
+
+Put the API definition in a factory function. Each call creates new resource
+state and a new environment:
 
 ```ts
 function createWidgetSim() {
@@ -125,7 +135,12 @@ function createWidgetSim() {
 }
 ```
 
-Each call creates separate state:
+The returned object implements `Symbol.dispose`, which allows a test to use
+`using sim` and release the registered origin when it finishes.
+
+The following Vitest example uses `Widget` and `archiveWidget()` from above.
+Create this simulation within the test, after disposing the walkthrough's
+environment:
 
 ```ts
 import { expect, test } from "vitest";
@@ -144,11 +159,12 @@ test("archives a widget", async () => {
 });
 ```
 
-Create the simulation before calling the application and dispose it after the
-application finishes. This keeps state and HTTP interception within the test's
-lifetime.
+Tests share the factory function and create their own simulation objects. Only
+one active environment can register a given origin in a Node.js process.
+Dispose the environment before another test registers that origin.
 
-## Continue reading
+## Next steps
 
-Read [Resource state](../resource-state/README.md) for direct state operations
-and [REST resources](../rest-resources/README.md) for the supplied HTTP routes.
+[Resource state](../resource-state/README.md) explains the methods for arranging
+and inspecting entities. [REST resources](../rest-resources/README.md) lists the
+HTTP routes and their configuration.
