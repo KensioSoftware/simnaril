@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@mswjs/interceptors':
         specifier: ^0.42.3
-        version: 0.42.3(supports-color@7.2.0)
+        version: 0.42.4(supports-color@7.2.0)
     devDependencies:
       '@faker-js/faker':
         specifier: ^10.6.0
@@ -20,7 +20,7 @@ importers:
         version: 1.10.1
       '@kensio/smartass':
         specifier: ^1.37.6
-        version: 1.40.0
+        version: 1.40.1
       '@semantic-release/exec':
         specifier: 7.1.0
         version: 7.1.0(semantic-release@25.0.9(@typescript/typescript6@6.0.2)(supports-color@7.2.0))(supports-color@7.2.0)
@@ -119,12 +119,12 @@ packages:
     resolution: {integrity: sha512-P/qUVhAaMF98uZ4NsSfiEp5WhfCRSN44nGQDgGY8MA6w9CkCVs4IdxguPGfK7+qNBCViK/xXN/gpj099YiSf1A==}
     engines: {node: '>=22.0.0'}
 
-  '@kensio/smartass@1.40.0':
-    resolution: {integrity: sha512-GdqrDJBlUpHywDXwXcwazYCbwiR6MBGRVW5ZyGcWChbPqE27iDufPNNQNzC/DOp8d1mJmhW6OY4Ou56cTiLRqg==}
+  '@kensio/smartass@1.40.1':
+    resolution: {integrity: sha512-xsP3plQlF9p5rLRNAIKmTGy8Xw8squb4HQkbDajy7pns2ZzT0jv/9NXXT6+AkrdfJJEK+5XuhAcYyvwordTOiQ==}
     engines: {node: '>=24.0.0'}
 
-  '@mswjs/interceptors@0.42.3':
-    resolution: {integrity: sha512-/KTwTlSIPEHdxy0mkkTLRIINgZwMmPgSlEJOFLadXQmU0dr+tDVPJJBNYYvbLkY/v8spMXsYt72fS1rw9yAOow==}
+  '@mswjs/interceptors@0.42.4':
+    resolution: {integrity: sha512-cPUjmo3alefjtpYVKrvXsRiGzzfjlwCrIdg751/sy9Q55ZI/7lvyARIsuyVO2v2KljMHfxyW1QCmxI9bTgLYkg==}
     engines: {node: '>=22'}
 
   '@octokit/auth-token@6.0.0':
@@ -2256,9 +2256,9 @@ snapshots:
 
   '@kensio/part-factory@1.10.1': {}
 
-  '@kensio/smartass@1.40.0': {}
+  '@kensio/smartass@1.40.1': {}
 
-  '@mswjs/interceptors@0.42.3(supports-color@7.2.0)':
+  '@mswjs/interceptors@0.42.4(supports-color@7.2.0)':
     dependencies:
       '@open-draft/until': 3.0.1
       '@types/debug': 4.1.13
